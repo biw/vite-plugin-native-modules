@@ -1,6 +1,6 @@
 {
   "name": "vite-plugin-native-modules",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A Vite plugin for integrating Node.js native modules into your Vite project",
   "author": "Ben Williams",
   "license": "MIT",
@@ -8,7 +8,7 @@
   "packageManager": "yarn@4.10.3",
   "repository": {
     "type": "git",
-    "url": "https://github.com/biw/vite-plugin-native-modules.git"
+    "url": "git+https://github.com/biw/vite-plugin-native-modules.git"
   },
   "type": "module",
   "main": "./dist/index.cjs",

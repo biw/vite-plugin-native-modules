@@ -1,5 +1,9 @@
 # vite-plugin-native-modules
 
+[![CI](https://badgen.net/github/checks/biw/vite-plugin-native-modules)](https://github.com/biw/vite-plugin-native-modules/actions)
+[![npm version](https://badgen.net/npm/v/vite-plugin-native-modules)](https://www.npmjs.com/package/vite-plugin-native-modules)
+[![npm downloads](https://badgen.net/npm/dt/vite-plugin-native-modules)](https://www.npmjs.com/package/vite-plugin-native-modules)
+
 A Vite plugin for seamlessly integrating Node.js native modules (`.node` files) into your Vite project.
 
 ## Features

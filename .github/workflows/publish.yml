@@ -7,9 +7,9 @@ on:
     paths:
       - "package.json"
 
-# Required permissions for npm provenance
+# Required permissions for npm provenance and GitHub releases
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
@@ -98,11 +98,10 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.check-version.outputs.version }}
-          release_name: Release v${{ needs.check-version.outputs.version }}
+          name: Release v${{ needs.check-version.outputs.version }}
           draft: false
           prerelease: false
+          generate_release_notes: true
