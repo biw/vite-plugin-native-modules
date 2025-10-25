@@ -43,6 +43,9 @@ jobs:
       - name: Type check
         run: yarn tsc --noEmit
 
+      - name: Test
+        run: yarn test
+
       - name: Build
         run: yarn build
 

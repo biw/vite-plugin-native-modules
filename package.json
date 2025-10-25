@@ -39,7 +39,9 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "peerDependencies": {
     "vite": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0"
@@ -51,6 +53,7 @@
     "tsup": "8.5.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.46.2",
-    "vite": "6.2.1"
+    "vite": "6.2.1",
+    "vitest": "^2.1.8"
   }
 }
