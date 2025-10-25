@@ -1,0 +1,40 @@
+# Source files
+src
+tsconfig.json
+tsup.config.ts
+
+# Build tools
+.github
+.editorconfig
+eslint.config.mjs
+
+# Yarn
+.yarn
+.yarnrc.yml
+yarn.lock
+.pnp.*
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Tests
+__tests__
+*.test.ts
+*.spec.ts
+coverage
+
+# Documentation (we want README.md but not others)
+docs
+
+# Misc
+.DS_Store
+.nvmrc
+*.log

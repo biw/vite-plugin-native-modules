@@ -1,4 +1,54 @@
 {
   "name": "vite-plugin-native-modules",
-  "packageManager": "yarn@4.10.3"
+  "version": "0.0.1",
+  "description": "A Vite plugin for integrating Node.js native modules into your Vite project",
+  "author": "Ben Williams",
+  "license": "MIT",
+  "homepage": "https://github.com/biw/vite-plugin-native-modules",
+  "packageManager": "yarn@4.10.3",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/biw/vite-plugin-native-modules.git"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "vite",
+    "plugin",
+    "native",
+    "modules",
+    "node-gyp",
+    "native-module",
+    "native-addon",
+    "native-module-loader"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint ."
+  },
+  "peerDependencies": {
+    "vite": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.38.0",
+    "@types/node": "22.18.0",
+    "eslint": "9.38.0",
+    "tsup": "8.5.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.46.2",
+    "vite": "6.2.1"
+  }
 }
