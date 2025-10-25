@@ -9,6 +9,7 @@ A Vite plugin for seamlessly integrating Node.js native modules (`.node` files) 
 - 🚀 **Zero configuration** for most use cases
 - 🔒 **Production-ready** with proper file emission
 - 🎯 **TypeScript support** out of the box
+- ⚛️ **Electron compatible** for building desktop apps with native modules
 
 ## Installation
 
@@ -96,6 +97,12 @@ Vite doesn't natively support `.node` files since they're binary Node.js addons 
 - Ensuring they're copied to the output directory
 - Maintaining proper `require()` calls in the built code
 - Supporting content-based cache invalidation
+
+This is especially useful for:
+
+- **Electron apps** that use native Node.js modules
+- Projects using native addons like `better-sqlite3`, `sharp`, `node-canvas`, etc.
+- Any Vite-based Node.js application that depends on compiled `.node` binaries
 
 ## Compatibility
 

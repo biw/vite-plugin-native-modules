@@ -23,16 +23,15 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Get Yarn cache directory
-        id: yarn-cache-dir
-        run: echo "dir=$(yarn config get cacheFolder)" >> $GITHUB_OUTPUT
-
       - name: Cache Yarn dependencies
         uses: actions/cache@v4
         with:
-          path: ${{ steps.yarn-cache-dir.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          path: |
+            .yarn/cache
+            .yarn/install-state.gz
+          key: ${{ runner.os }}-yarn-${{ github.ref }}-${{ hashFiles('**/yarn.lock') }}
           restore-keys: |
+            ${{ runner.os }}-yarn-${{ github.ref }}-
             ${{ runner.os }}-yarn-
 
       - name: Install dependencies
