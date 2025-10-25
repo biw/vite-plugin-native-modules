@@ -1,0 +1,4 @@
+{
+  "name": "vite-plugin-native-modules",
+  "packageManager": "yarn@4.10.3"
+}
