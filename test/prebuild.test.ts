@@ -4,6 +4,10 @@ import type { Plugin } from "vite";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { parse as acornParse } from "acorn";
+
+// Wrapper to provide the same parse signature as Rollup
+const parse = (code: string) => acornParse(code, { ecmaVersion: "latest" });
 
 /**
  * Tests for prebuild packages issue
@@ -73,11 +77,8 @@ describe("Prebuild Packages Support (Issue #18)", () => {
 
       const code = `const binding = require("../build/Release/better_sqlite3.node");`;
 
-      const result = (plugin.transform as any).call(
-        {} as any,
-        code,
-        jsFilePath
-      );
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, jsFilePath);
 
       expect(result).toBeDefined();
       // Should transform the path to use hashed filename
@@ -152,11 +153,8 @@ describe("Prebuild Packages Support (Issue #18)", () => {
 
       const code = `const binding = require("../build/Release/sharp-${platform}-${arch}.node");`;
 
-      const result = (plugin.transform as any).call(
-        {} as any,
-        code,
-        jsFilePath
-      );
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, jsFilePath);
 
       expect(result).toBeDefined();
       // Should transform with platform-specific name
@@ -203,7 +201,8 @@ describe("Prebuild Packages Support (Issue #18)", () => {
         const serialport = require("./node_modules/serialport/build/Release/serialport.node");
       `;
 
-      const result = (plugin.transform as any).call({} as any, code, appPath);
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, appPath);
 
       expect(result).toBeDefined();
       // All three should be transformed with hashes
@@ -251,7 +250,8 @@ describe("Prebuild Packages Support (Issue #18)", () => {
       const mainPath = path.join(electronDir, "main.js");
       const code = `const addon = require("./node_modules/native-addon/build/Release/addon.node");`;
 
-      const result = (plugin.transform as any).call({} as any, code, mainPath);
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, mainPath);
 
       expect(result).toBeDefined();
       expect(result.code).toContain("addon-");
@@ -277,7 +277,8 @@ describe("Prebuild Packages Support (Issue #18)", () => {
       const code = `const addon = require("./my-native-addon.node");`;
       const id = path.join(tempDir, "index.js");
 
-      const result = (plugin.transform as any).call({} as any, code, id);
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, id);
 
       expect(result).toBeDefined();
       expect(result.code).toContain("my-native-addon-");

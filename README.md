@@ -14,6 +14,8 @@ A Vite plugin for seamlessly integrating Node.js native modules (`.node` files) 
 - 🔒 **Production-ready** with proper file emission
 - 🎯 **TypeScript support** out of the box
 - ⚛️ **Electron compatible** for building desktop apps with native modules
+- 🌳 **AST-based transformation** - robust against minification and code mangling
+- 📦 **Zero dependencies** - uses Rollup's built-in parser (via Vite)
 
 ## Installation
 
@@ -82,16 +84,21 @@ nativeFilePlugin({
 
 The plugin intercepts imports of `.node` files during the Vite build process:
 
-1. **Resolution**: Detects when a `.node` file is imported
-2. **Hashing**: Generates a content-based hash for cache invalidation
-3. **Emission**: Emits the file as a build asset with the hashed filename
-4. **Transformation**: Updates the import to reference the hashed filename
+1. **Resolution**: Detects when a `.node` file is imported directly
+2. **AST Transformation**: Parses bundled JavaScript using Rollup's built-in AST parser to find all function calls with `.node` string arguments
+   - Works regardless of minification or variable name changes
+   - No fragile regex patterns - uses proper Abstract Syntax Tree parsing
+   - Handles any require/import pattern after bundling
+3. **Hashing**: Generates a content-based MD5 hash (8 chars) for cache invalidation
+4. **Emission**: Emits the file as a build asset with the hashed filename (e.g., `addon-A1B2C3D4.node`)
+5. **Path Rewriting**: Updates all references to use the hashed filename
 
 This ensures that:
 
 - Native modules are properly included in your build output
 - File names change when content changes (cache busting)
 - Multiple versions can coexist without conflicts
+- Works reliably even with code minification and mangling
 
 ## Why This Plugin?
 

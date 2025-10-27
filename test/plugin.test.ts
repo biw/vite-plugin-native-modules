@@ -4,6 +4,10 @@ import type { Plugin } from "vite";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { parse as acornParse } from "acorn";
+
+// Wrapper to provide the same parse signature as Rollup
+const parse = (code: string) => acornParse(code, { ecmaVersion: "latest" });
 
 describe("nativeFilePlugin", () => {
   let tempDir: string;
@@ -315,7 +319,8 @@ describe("nativeFilePlugin", () => {
       const code = `const addon = require("./addon.node");`;
       const id = path.join(tempDir, "index.js");
 
-      const result = (plugin.transform as any).call({} as any, code, id);
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, id);
 
       expect(result).toBeDefined();
       expect(result.code).toContain("./addon-");
@@ -345,7 +350,8 @@ describe("nativeFilePlugin", () => {
       `;
       const id = path.join(tempDir, "index.js");
 
-      const result = (plugin.transform as any).call({} as any, code, id);
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, id);
 
       expect(result).toBeDefined();
       expect(result.code).toContain("addon1-");
@@ -372,7 +378,8 @@ describe("nativeFilePlugin", () => {
       `;
       const id = path.join(tempDir, "index.js");
 
-      const result = (plugin.transform as any).call({} as any, code, id);
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, id);
 
       expect(result).toBeDefined();
       expect(result.code).toContain("addon-");
@@ -392,7 +399,8 @@ describe("nativeFilePlugin", () => {
       const code = `const fs = require("fs");`;
       const id = path.join(tempDir, "index.js");
 
-      const result = (plugin.transform as any).call({} as any, code, id);
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, id);
       expect(result).toBeNull();
     });
 
@@ -410,7 +418,8 @@ describe("nativeFilePlugin", () => {
       const code = `const addon = require("./nonexistent.node");`;
       const id = path.join(tempDir, "index.js");
 
-      const result = (plugin.transform as any).call({} as any, code, id);
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, id);
       expect(result).toBeNull();
     });
   });

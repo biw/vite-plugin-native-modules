@@ -17,6 +17,34 @@ interface NativeFilePluginOptions {
   forced?: boolean;
 }
 
+// ESTree AST Node types
+interface BaseASTNode {
+  type: string;
+  start?: number;
+  end?: number;
+}
+
+interface LiteralNode extends BaseASTNode {
+  type: "Literal";
+  value: string | number | boolean | null;
+  start: number;
+  end: number;
+}
+
+interface CallExpressionNode extends BaseASTNode {
+  type: "CallExpression";
+  arguments: BaseASTNode[];
+}
+
+// Type guard functions
+function isCallExpression(node: BaseASTNode): node is CallExpressionNode {
+  return node.type === "CallExpression";
+}
+
+function isLiteral(node: BaseASTNode): node is LiteralNode {
+  return node.type === "Literal";
+}
+
 export const nativeFilePlugin = (
   options: NativeFilePluginOptions = {}
 ): Plugin => {
@@ -105,58 +133,107 @@ export const nativeFilePlugin = (
       // Only process files that mention .node
       if (!code.includes(".node")) return null;
 
-      // Match require("../build/Release/addon.node") or similar patterns
-      // Handles various require function names (require, _require, l, etc.)
-      const requireRegex =
-        /(?:require|_require|l)\s*\(\s*["`']([^"`']*\.node)["`']\s*\)/g;
       let modified = false;
-      let newCode = code;
+      const replacements: Array<{ start: number; end: number; value: string }> =
+        [];
 
-      const matchList: RegExpExecArray[] = Array.from(
-        code.matchAll(requireRegex)
-      );
+      try {
+        // Parse the code using Rollup's built-in parser
+        // In tests, this.parse may not be available, so we check first
 
-      for (const match of matchList) {
-        const relativePath = match[1];
+        const ast = this.parse(code);
 
-        // Resolve the actual path
-        const absolutePath = path.resolve(path.dirname(id), relativePath);
+        // Walk the AST to find CallExpression nodes
+        const walk = (node: BaseASTNode): void => {
+          if (isCallExpression(node)) {
+            // Check if this call has a single string literal argument ending in .node
+            if (
+              node.arguments.length === 1 &&
+              isLiteral(node.arguments[0]) &&
+              typeof node.arguments[0].value === "string" &&
+              node.arguments[0].value.endsWith(".node")
+            ) {
+              const literalNode = node.arguments[0];
+              const relativePath = literalNode.value as string;
 
-        if (!fs.existsSync(absolutePath)) continue;
+              // Resolve the actual path
+              const absolutePath = path.resolve(path.dirname(id), relativePath);
 
-        // Check if we already processed this file
-        let info = nativeFiles.get(absolutePath);
+              if (!fs.existsSync(absolutePath)) return;
 
-        if (!info) {
-          // Generate hash and store
-          const content = fs.readFileSync(absolutePath);
-          const hash = crypto
-            .createHash("md5")
-            .update(content)
-            .digest("hex")
-            .slice(0, 8);
-          const basename = path.basename(relativePath, ".node");
-          const hashedFilename = `${basename}-${hash.toUpperCase()}.node`;
+              // Check if we already processed this file
+              let info = nativeFiles.get(absolutePath);
 
-          info = {
-            content,
-            hashedFilename,
-            originalPath: absolutePath,
-          };
-          nativeFiles.set(absolutePath, info);
+              if (!info) {
+                // Generate hash and store
+                const content = fs.readFileSync(absolutePath);
+                const hash = crypto
+                  .createHash("md5")
+                  .update(content)
+                  .digest("hex")
+                  .slice(0, 8);
+                const basename = path.basename(relativePath, ".node");
+                const hashedFilename = `${basename}-${hash.toUpperCase()}.node`;
+
+                info = {
+                  content,
+                  hashedFilename,
+                  originalPath: absolutePath,
+                };
+                nativeFiles.set(absolutePath, info);
+              }
+
+              // Record the replacement
+              replacements.push({
+                start: literalNode.start,
+                end: literalNode.end,
+                value: `"./${info.hashedFilename}"`,
+              });
+              modified = true;
+            }
+          }
+
+          // Recursively walk child nodes
+          for (const key in node) {
+            if (key === "type" || key === "start" || key === "end") continue;
+            const child = (node as unknown as Record<string, unknown>)[key];
+            if (child && typeof child === "object") {
+              if (Array.isArray(child)) {
+                child.forEach((c) => {
+                  if (c && typeof c === "object" && "type" in c) {
+                    walk(c as BaseASTNode);
+                  }
+                });
+              } else if ("type" in child) {
+                walk(child as BaseASTNode);
+              }
+            }
+          }
+        };
+
+        walk(ast);
+
+        // Apply replacements in reverse order to maintain correct positions
+        if (modified) {
+          let newCode = code;
+          replacements
+            .sort((a, b) => b.start - a.start)
+            .forEach((replacement) => {
+              newCode =
+                newCode.slice(0, replacement.start) +
+                replacement.value +
+                newCode.slice(replacement.end);
+            });
+
+          return { code: newCode, map: null };
         }
-
-        // Replace the require path with the hashed filename
-        const replacement = match[0].replace(
-          relativePath,
-          `./${info.hashedFilename}`
+      } catch (error) {
+        // If parsing fails, log and skip transformation
+        console.warn(
+          `Failed to parse ${id} for native module transformation:`,
+          error
         );
-        newCode = newCode.replace(match[0], replacement);
-        modified = true;
-      }
-
-      if (modified) {
-        return { code: newCode, map: null };
+        return null;
       }
 
       return null;
