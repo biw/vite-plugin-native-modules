@@ -52,10 +52,38 @@ const result = addon.hello();
 
 The plugin will automatically:
 
-1. Detect the `.node` file import
+1. Detect the `.node` file import (and any configured additional native files)
 2. Hash the file contents for cache busting
 3. Emit it to your build output with a hashed filename (e.g., `addon-A1B2C3D4.node`)
 4. Update the import path to use the hashed filename
+
+### Handling Non-Standard Extensions
+
+Some packages use platform-specific native files with custom extensions. For example:
+
+```typescript
+// In node_modules/native-package-123/lib/loader.js
+const addon = require("../../build/native-file.node-macos");
+```
+
+Configure the plugin to handle these:
+
+```typescript
+nativeFilePlugin({
+  additionalNativeFiles: [
+    {
+      package: "native-package-123",
+      fileNames: ["native-file.node-macos", "native-file.node-linux"],
+    },
+  ],
+});
+```
+
+The plugin will then copy and hash these files just like standard `.node` files, transforming them to:
+
+```typescript
+const addon = require("./native-file-A1B2C3D4.node-macos");
+```
 
 ## Configuration
 
@@ -68,6 +96,17 @@ interface NativeFilePluginOptions {
    * Defaults to true in build mode, false in dev mode.
    */
   forced?: boolean;
+
+  /**
+   * Additional native file configurations for packages with non-standard file extensions.
+   * Use this for packages that use custom extensions like .node-macos, .node-linux, etc.
+   */
+  additionalNativeFiles?: {
+    /** Package name to target (e.g., 'native-package-123') */
+    package: string;
+    /** Additional file names to copy (e.g., ['native-file.node-macos', 'addon.node-linux']) */
+    fileNames: string[];
+  }[];
 }
 ```
 
@@ -77,6 +116,14 @@ interface NativeFilePluginOptions {
 nativeFilePlugin({
   // Force enable in dev mode (not typically recommended)
   forced: true,
+
+  // Handle packages with non-standard native file extensions
+  additionalNativeFiles: [
+    {
+      package: "native-package-123",
+      fileNames: ["native-file.node-macos", "native-file.node-linux"],
+    },
+  ],
 });
 ```
 
@@ -108,12 +155,14 @@ Vite doesn't natively support `.node` files since they're binary Node.js addons 
 - Ensuring they're copied to the output directory
 - Maintaining proper `require()` calls in the built code
 - Supporting content-based cache invalidation
+- Handling non-standard native file extensions (e.g., `.node-macos`, `.node-linux`)
 
 This is especially useful for:
 
 - **Electron apps** that use native Node.js modules
 - Projects using native addons like `better-sqlite3`, `sharp`, `node-canvas`, etc.
 - Any Vite-based Node.js application that depends on compiled `.node` binaries
+- Packages with platform-specific native binaries using custom naming conventions
 
 ## Compatibility
 

@@ -424,6 +424,161 @@ describe("nativeFilePlugin", () => {
     });
   });
 
+  describe("Additional Native Files", () => {
+    it("should handle custom file extensions with additionalNativeFiles config", () => {
+      const plugin = nativeFilePlugin({
+        forced: true,
+        additionalNativeFiles: [
+          {
+            package: "test-native-pkg",
+            fileNames: ["addon.node-macos", "addon.node-linux"],
+          },
+        ],
+      }) as Plugin;
+
+      expect(plugin.configResolved).toBeDefined();
+      expect(plugin.transform).toBeDefined();
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      // Create a package structure
+      const pkgDir = path.join(tempDir, "node_modules", "test-native-pkg");
+      fs.mkdirSync(path.join(pkgDir, "build"), { recursive: true });
+
+      const nodeFileMac = path.join(pkgDir, "build", "addon.node-macos");
+      fs.writeFileSync(nodeFileMac, Buffer.from("macos binary"));
+
+      const jsFile = path.join(pkgDir, "lib", "index.js");
+      fs.mkdirSync(path.dirname(jsFile), { recursive: true });
+
+      const code = `const addon = require("../build/addon.node-macos");`;
+
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, jsFile);
+
+      expect(result).toBeDefined();
+      expect(result.code).toContain("addon-");
+      expect(result.code).toContain(".node-macos");
+      expect(result.code).not.toBe(code);
+    });
+
+    it("should only process files for configured packages", () => {
+      const plugin = nativeFilePlugin({
+        forced: true,
+        additionalNativeFiles: [
+          {
+            package: "specific-package",
+            fileNames: ["custom.node-file"],
+          },
+        ],
+      }) as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      // Create file in a different package
+      const otherPkgDir = path.join(tempDir, "node_modules", "other-package");
+      fs.mkdirSync(otherPkgDir, { recursive: true });
+
+      const customFile = path.join(otherPkgDir, "custom.node-file");
+      fs.writeFileSync(customFile, Buffer.from("custom binary"));
+
+      const jsFile = path.join(otherPkgDir, "index.js");
+      const code = `const addon = require("./custom.node-file");`;
+
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, jsFile);
+
+      // Should not transform because it's not in the configured package
+      expect(result).toBeNull();
+    });
+
+    it("should still auto-detect .node files without configuration", () => {
+      const plugin = nativeFilePlugin({
+        forced: true,
+        additionalNativeFiles: [
+          {
+            package: "some-package",
+            fileNames: ["custom.node-file"],
+          },
+        ],
+      }) as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      const nodeFile = path.join(tempDir, "addon.node");
+      fs.writeFileSync(nodeFile, Buffer.from("standard addon"));
+
+      const code = `const addon = require("./addon.node");`;
+      const id = path.join(tempDir, "index.js");
+
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, id);
+
+      // Should still process standard .node files
+      expect(result).toBeDefined();
+      expect(result.code).toContain("addon-");
+      expect(result.code).toContain(".node");
+    });
+
+    it("should handle multiple packages with different file names", () => {
+      const plugin = nativeFilePlugin({
+        forced: true,
+        additionalNativeFiles: [
+          {
+            package: "package-a",
+            fileNames: ["addon.node-darwin"],
+          },
+          {
+            package: "package-b",
+            fileNames: ["binding.node-x64"],
+          },
+        ],
+      }) as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      // Create package A
+      const pkgADir = path.join(tempDir, "node_modules", "package-a");
+      fs.mkdirSync(pkgADir, { recursive: true });
+      const fileA = path.join(pkgADir, "addon.node-darwin");
+      fs.writeFileSync(fileA, Buffer.from("package a"));
+      const jsFileA = path.join(pkgADir, "index.js");
+      const codeA = `const addon = require("./addon.node-darwin");`;
+
+      // Create package B
+      const pkgBDir = path.join(tempDir, "node_modules", "package-b");
+      fs.mkdirSync(pkgBDir, { recursive: true });
+      const fileB = path.join(pkgBDir, "binding.node-x64");
+      fs.writeFileSync(fileB, Buffer.from("package b"));
+      const jsFileB = path.join(pkgBDir, "index.js");
+      const codeB = `const binding = require("./binding.node-x64");`;
+
+      const context = { parse };
+      const resultA = (plugin.transform as any).call(context, codeA, jsFileA);
+      const resultB = (plugin.transform as any).call(context, codeB, jsFileB);
+
+      expect(resultA).toBeDefined();
+      expect(resultA.code).toContain("addon-");
+      expect(resultA.code).toContain(".node-darwin");
+
+      expect(resultB).toBeDefined();
+      expect(resultB.code).toContain("binding-");
+      expect(resultB.code).toContain(".node-x64");
+    });
+  });
+
   describe("Module Loading", () => {
     it("should load virtual modules with proper require code", async () => {
       const plugin = nativeFilePlugin() as Plugin;

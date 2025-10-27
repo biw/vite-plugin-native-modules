@@ -12,9 +12,18 @@ interface NativeFileInfo {
   originalPath: string;
 }
 
-interface NativeFilePluginOptions {
+export interface PackageConfig {
+  /** Package name to target (e.g., 'native-package-123') */
+  package: string;
+  /** Additional file names to copy (e.g., ['native-file.node-macos', 'addon.node-linux']) */
+  fileNames: string[];
+}
+
+export interface NativeFilePluginOptions {
   /** Enable the plugin. Defaults to true in build mode, false in dev mode */
   forced?: boolean;
+  /** Additional native file configurations for packages with non-standard file extensions */
+  additionalNativeFiles?: PackageConfig[];
 }
 
 // ESTree AST Node types
@@ -51,6 +60,36 @@ export const nativeFilePlugin = (
   const name = "native-file-plugin";
   const nativeFiles = new Map<string, NativeFileInfo>();
   let command: "build" | "serve";
+
+  // Helper function to check if a file path should be processed based on package configs
+  const shouldProcessFile = (
+    filePath: string,
+    currentFileId: string
+  ): boolean => {
+    // Always process .node files
+    if (filePath.endsWith(".node")) return true;
+
+    // Check additional native file configurations
+    if (options.additionalNativeFiles) {
+      for (const pkgConfig of options.additionalNativeFiles) {
+        // Check if current file is within this package's node_modules
+        const pkgPath = `node_modules/${pkgConfig.package}`;
+        if (currentFileId.includes(pkgPath)) {
+          // Check if this file matches any of the configured file names
+          for (const fileName of pkgConfig.fileNames) {
+            if (
+              filePath.endsWith(fileName) ||
+              filePath.includes(`/${fileName}`)
+            ) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+
+    return false;
+  };
 
   return {
     configResolved(config) {
@@ -92,10 +131,10 @@ export const nativeFilePlugin = (
       const enabled = options.forced ?? command === "build";
 
       if (!enabled) return null;
-
-      // Check if this is a .node file
-      if (!source.endsWith(".node")) return null;
       if (!importer) return null;
+
+      // Check if this file should be processed
+      if (!shouldProcessFile(source, importer)) return null;
 
       // Resolve the path
       const resolved = path.resolve(path.dirname(importer), source);
@@ -110,8 +149,17 @@ export const nativeFilePlugin = (
         .update(content)
         .digest("hex")
         .slice(0, 8);
-      const basename = path.basename(source, ".node");
-      const hashedFilename = `${basename}-${hash.toUpperCase()}.node`;
+
+      // Insert hash before the last extension
+      const filename = path.basename(source);
+      const lastDotIndex = filename.lastIndexOf(".");
+      const hashedFilename =
+        lastDotIndex > 0
+          ? `${filename.slice(
+              0,
+              lastDotIndex
+            )}-${hash.toUpperCase()}${filename.slice(lastDotIndex)}`
+          : `${filename}-${hash.toUpperCase()}`;
 
       // Store the mapping
       nativeFiles.set(resolved, {
@@ -146,15 +194,17 @@ export const nativeFilePlugin = (
         // Walk the AST to find CallExpression nodes
         const walk = (node: BaseASTNode): void => {
           if (isCallExpression(node)) {
-            // Check if this call has a single string literal argument ending in .node
+            // Check if this call has a single string literal argument
             if (
               node.arguments.length === 1 &&
               isLiteral(node.arguments[0]) &&
-              typeof node.arguments[0].value === "string" &&
-              node.arguments[0].value.endsWith(".node")
+              typeof node.arguments[0].value === "string"
             ) {
               const literalNode = node.arguments[0];
               const relativePath = literalNode.value as string;
+
+              // Check if this file should be processed (either .node or package-specific)
+              if (!shouldProcessFile(relativePath, id)) return;
 
               // Resolve the actual path
               const absolutePath = path.resolve(path.dirname(id), relativePath);
@@ -172,8 +222,19 @@ export const nativeFilePlugin = (
                   .update(content)
                   .digest("hex")
                   .slice(0, 8);
-                const basename = path.basename(relativePath, ".node");
-                const hashedFilename = `${basename}-${hash.toUpperCase()}.node`;
+
+                // Insert hash before the last extension
+                // e.g., addon.node -> addon-HASH.node
+                //       native-file.node-macos -> native-file-HASH.node-macos
+                const filename = path.basename(relativePath);
+                const lastDotIndex = filename.lastIndexOf(".");
+                const hashedFilename =
+                  lastDotIndex > 0
+                    ? `${filename.slice(
+                        0,
+                        lastDotIndex
+                      )}-${hash.toUpperCase()}${filename.slice(lastDotIndex)}`
+                    : `${filename}-${hash.toUpperCase()}`;
 
                 info = {
                   content,
