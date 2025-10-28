@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { nativeFilePlugin } from "../src/index.js";
+import nativeFilePlugin from "../src/index.js";
 import type { Plugin } from "vite";
 import fs from "node:fs";
 import path from "node:path";
@@ -25,13 +25,13 @@ describe("nativeFilePlugin", () => {
   describe("Plugin Configuration", () => {
     it("should return a plugin with correct name", () => {
       const plugin = nativeFilePlugin();
-      expect(plugin.name).toBe("native-file-plugin");
+      expect(plugin.name).toBe("plugin-native-modules");
     });
 
     it("should accept options parameter", () => {
       const plugin = nativeFilePlugin({ forced: true });
       expect(plugin).toBeDefined();
-      expect(plugin.name).toBe("native-file-plugin");
+      expect(plugin.name).toBe("plugin-native-modules");
     });
 
     it("should have required plugin hooks", () => {

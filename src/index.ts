@@ -12,7 +12,7 @@ interface NativeFileInfo {
   originalPath: string;
 }
 
-export interface PackageConfig {
+interface PackageConfig {
   /** Package name to target (e.g., 'native-package-123') */
   package: string;
   /** Additional file names to copy (e.g., ['native-file.node-macos', 'addon.node-linux']) */
@@ -54,18 +54,15 @@ function isLiteral(node: BaseASTNode): node is LiteralNode {
   return node.type === "Literal";
 }
 
-export const nativeFilePlugin = (
+export default function nativeFilePlugin(
   options: NativeFilePluginOptions = {}
-): Plugin => {
-  const name = "native-file-plugin";
+): Plugin {
+  const name = "plugin-native-modules";
   const nativeFiles = new Map<string, NativeFileInfo>();
-  let command: "build" | "serve";
+  let command: "build" | "serve" = "build";
 
   // Helper function to check if a file path should be processed based on package configs
-  const shouldProcessFile = (
-    filePath: string,
-    currentFileId: string
-  ): boolean => {
+  function shouldProcessFile(filePath: string, currentFileId: string): boolean {
     // Always process .node files
     if (filePath.endsWith(".node")) return true;
 
@@ -89,7 +86,7 @@ export const nativeFilePlugin = (
     }
 
     return false;
-  };
+  }
 
   return {
     configResolved(config) {
@@ -300,4 +297,4 @@ export const nativeFilePlugin = (
       return null;
     },
   };
-};
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { nativeFilePlugin } from "../src/index.js";
+import nativeFilePlugin from "../src/index.js";
 import type { Plugin } from "vite";
 import fs from "node:fs";
 import path from "node:path";
@@ -372,7 +372,7 @@ describe("Prebuild Packages Support (Issue #18)", () => {
       const plugin = nativeFilePlugin();
 
       expect(plugin).toBeDefined();
-      expect(plugin.name).toBe("native-file-plugin");
+      expect(plugin.name).toBe("plugin-native-modules");
 
       // Plugin should have all necessary hooks without webpack
       expect(plugin.resolveId).toBeDefined();

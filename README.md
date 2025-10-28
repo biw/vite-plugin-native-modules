@@ -33,7 +33,7 @@ Add the plugin to your `vite.config.ts`:
 
 ```typescript
 import { defineConfig } from "vite";
-import { nativeFilePlugin } from "vite-plugin-native-modules";
+import nativeFilePlugin from "vite-plugin-native-modules";
 
 export default defineConfig({
   plugins: [nativeFilePlugin()],
@@ -166,7 +166,7 @@ This is especially useful for:
 
 ## Compatibility
 
-- **Vite**: 3.x, 4.x, 5.x, 6.x
+- **Vite**: 3+
 - **Node.js**: 18+
 
 ## Contributing
