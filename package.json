@@ -40,7 +40,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "lint": "eslint .",
+    "lint": "tsc --noEmit && eslint .",
     "test": "vitest run",
     "test:watch": "vitest"
   },

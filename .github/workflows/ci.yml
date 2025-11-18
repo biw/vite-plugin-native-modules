@@ -40,9 +40,6 @@ jobs:
       - name: Lint
         run: yarn lint
 
-      - name: Type check
-        run: yarn tsc --noEmit
-
       - name: Test
         run: yarn test
 

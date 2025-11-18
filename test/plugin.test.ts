@@ -610,9 +610,25 @@ describe("nativeFilePlugin", () => {
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
 
       expect(loadResult).toBeDefined();
-      expect(loadResult).toContain("createRequire");
+      // For CommonJS files (.js), should use module.exports
+      // For ES modules (.mjs), should use import/export
+      // Since importerPath is .js, it should be CommonJS
       expect(loadResult).toContain("module.exports");
       expect(loadResult).toContain("require(");
+      
+      // Test ES module format with .mjs file
+      const esmImporterPath = path.join(tempDir, "index.mjs");
+      const esmVirtualId = await (plugin.resolveId as any).call(
+        {} as any,
+        "./test.node",
+        esmImporterPath,
+        {}
+      );
+      const esmLoadResult = await (plugin.load as any).call({} as any, esmVirtualId);
+      expect(esmLoadResult).toBeDefined();
+      expect(esmLoadResult).toContain("import { createRequire }");
+      expect(esmLoadResult).toContain("export default");
+      expect(esmLoadResult).toContain("createRequireLocal");
     });
 
     it("should return null for non-virtual modules", async () => {
@@ -625,6 +641,93 @@ describe("nativeFilePlugin", () => {
         "/some/normal/file.js"
       );
       expect(result).toBeNull();
+    });
+
+    it("should handle edge case: virtual module ID without tracked type defaults to CommonJS", async () => {
+      const plugin = nativeFilePlugin() as Plugin;
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      const nodeFilePath = path.join(tempDir, "test.node");
+      fs.writeFileSync(nodeFilePath, Buffer.from("test"));
+
+      const importerPath = path.join(tempDir, "unknown.js");
+      const virtualId = await (plugin.resolveId as any).call(
+        {} as any,
+        "./test.node",
+        importerPath,
+        {}
+      );
+
+      expect(virtualId).toBeDefined();
+
+      const loadResult = await (plugin.load as any).call({} as any, virtualId);
+      expect(loadResult).toBeDefined();
+      
+      // Should default to CommonJS (safer than ES module)
+      expect(loadResult).toContain("module.exports");
+      expect(loadResult).toContain("require(");
+      expect(loadResult).not.toContain("import { createRequire }");
+    });
+
+    it("should not mix require() with import.meta.url in load hook output", async () => {
+      const plugin = nativeFilePlugin() as Plugin;
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      const nodeFilePath = path.join(tempDir, "test.node");
+      fs.writeFileSync(nodeFilePath, Buffer.from("test"));
+
+      const cjsFilePath = path.join(tempDir, "index.js");
+      const virtualId = await (plugin.resolveId as any).call(
+        {} as any,
+        "./test.node",
+        cjsFilePath,
+        {}
+      );
+
+      const loadResult = await (plugin.load as any).call({} as any, virtualId);
+      
+      // Should NOT have both require() and import.meta.url
+      const hasRequire = loadResult.includes("require(");
+      const hasImportMeta = loadResult.includes("import.meta.url");
+      
+      if (hasRequire) {
+        expect(hasImportMeta).toBe(false);
+      }
+    });
+
+    it("should not mix module.exports with export default in load hook output", async () => {
+      const plugin = nativeFilePlugin() as Plugin;
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      const nodeFilePath = path.join(tempDir, "test.node");
+      fs.writeFileSync(nodeFilePath, Buffer.from("test"));
+
+      const esmFilePath = path.join(tempDir, "index.mjs");
+      const virtualId = await (plugin.resolveId as any).call(
+        {} as any,
+        "./test.node",
+        esmFilePath,
+        {}
+      );
+
+      const loadResult = await (plugin.load as any).call({} as any, virtualId);
+      
+      // Should NOT have both module.exports and export default
+      const hasModuleExports = loadResult.includes("module.exports");
+      const hasExportDefault = loadResult.includes("export default");
+      
+      if (hasExportDefault) {
+        expect(hasModuleExports).toBe(false);
+      }
     });
   });
 
@@ -672,6 +775,110 @@ describe("nativeFilePlugin", () => {
       expect(emittedFiles[0].fileName).toContain("-");
       expect(emittedFiles[0].source).toBeDefined();
       expect(Buffer.isBuffer(emittedFiles[0].source)).toBe(true);
+    });
+  });
+
+  describe("Filename Format Options", () => {
+    it("should use preserve format by default for direct .node imports", async () => {
+      const emittedFiles: any[] = [];
+      const plugin = nativeFilePlugin() as Plugin;
+      (plugin.configResolved as any)({ command: "build", mode: "production" });
+
+      const nodeFile = path.join(tempDir, "addon.node");
+      fs.writeFileSync(nodeFile, Buffer.from("fake binary"));
+
+      const importerPath = path.join(tempDir, "index.js");
+
+      const mockContext = {
+        emitFile: (file: any) => {
+          emittedFiles.push(file);
+          return "mock-reference-id";
+        },
+      };
+
+      // Resolve to populate internal map
+      await (plugin.resolveId as any).call(
+        mockContext,
+        "./addon.node",
+        importerPath,
+        {}
+      );
+
+      // Generate bundle to emit files
+      (plugin.generateBundle as any).call(mockContext, {}, {}, false);
+
+      expect(emittedFiles.length).toBeGreaterThan(0);
+      expect(emittedFiles[0].fileName).toMatch(/addon-[A-F0-9]{8}\.node/);
+    });
+
+    it("should use hash-only format when specified for direct .node imports", async () => {
+      const emittedFiles: any[] = [];
+      const plugin = nativeFilePlugin({
+        filenameFormat: "hash-only",
+      }) as Plugin;
+      (plugin.configResolved as any)({ command: "build", mode: "production" });
+
+      const nodeFile = path.join(tempDir, "addon.node");
+      fs.writeFileSync(nodeFile, Buffer.from("fake binary"));
+
+      const importerPath = path.join(tempDir, "index.js");
+
+      const mockContext = {
+        emitFile: (file: any) => {
+          emittedFiles.push(file);
+          return "mock-reference-id";
+        },
+      };
+
+      // Resolve to populate internal map
+      await (plugin.resolveId as any).call(
+        mockContext,
+        "./addon.node",
+        importerPath,
+        {}
+      );
+
+      // Generate bundle to emit files
+      (plugin.generateBundle as any).call(mockContext, {}, {}, false);
+
+      expect(emittedFiles.length).toBeGreaterThan(0);
+      // Should be just hash.node, not addon-hash.node
+      expect(emittedFiles[0].fileName).toMatch(/^[A-F0-9]{8}\.node$/);
+      expect(emittedFiles[0].fileName).not.toContain("addon");
+    });
+
+    it("should use preserve format when explicitly set for direct .node imports", async () => {
+      const emittedFiles: any[] = [];
+      const plugin = nativeFilePlugin({
+        filenameFormat: "preserve",
+      }) as Plugin;
+      (plugin.configResolved as any)({ command: "build", mode: "production" });
+
+      const nodeFile = path.join(tempDir, "native.node");
+      fs.writeFileSync(nodeFile, Buffer.from("fake binary"));
+
+      const importerPath = path.join(tempDir, "index.js");
+
+      const mockContext = {
+        emitFile: (file: any) => {
+          emittedFiles.push(file);
+          return "mock-reference-id";
+        },
+      };
+
+      // Resolve to populate internal map
+      await (plugin.resolveId as any).call(
+        mockContext,
+        "./native.node",
+        importerPath,
+        {}
+      );
+
+      // Generate bundle to emit files
+      (plugin.generateBundle as any).call(mockContext, {}, {}, false);
+
+      expect(emittedFiles.length).toBeGreaterThan(0);
+      expect(emittedFiles[0].fileName).toMatch(/native-[A-F0-9]{8}\.node/);
     });
   });
 });
