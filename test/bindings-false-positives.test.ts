@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import nativeFilePlugin from "../src/index.js";
 import type { Plugin } from "vite";
 import fs from "node:fs";
@@ -247,12 +247,12 @@ module.exports = { addon, dataBindings };`;
 
     expect(result).not.toBeNull();
     expect(result.code).toBeDefined();
-    
+
     // Should transform the actual bindings call
     expect(result.code).toContain("addon-");
     expect(result.code).toContain(".node");
     expect(result.code).not.toContain("require('bindings')('addon')");
-    
+
     // Should NOT affect the false positives
     expect(result.code).toContain("dataBindings");
     expect(result.code).toContain("require('bindings-manager')");
