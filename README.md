@@ -8,14 +8,14 @@ A Vite plugin for seamlessly integrating Node.js native modules (`.node` files) 
 
 ## Features
 
-- 🔧 **Automatic handling** of `.node` files in your Vite build
-- 📦 **Content-addressed filenames** for optimal caching
-- 🚀 **Zero configuration** for most use cases
-- 🔒 **Production-ready** with proper file emission
-- 🎯 **TypeScript support** out of the box
-- ⚛️ **Electron compatible** for building desktop apps with native modules
-- 🌳 **AST-based transformation** - robust against minification and code mangling
-- 📦 **Zero dependencies** - uses Rollup's built-in parser (via Vite)
+- **Automatic handling** of `.node` files in your Vite build
+- **Zero configuration** for most use cases
+- **TypeScript support** out of the box
+- **Electron compatible** for building desktop apps with native modules
+- **`node-gyp-build` support** - automatically detects and rewrites runtime selectors
+- **`bindings` package support** - automatically handles `bindings('addon')` patterns
+- **AST-based transformation** - robust against minification and code mangling
+- **Zero dependencies** - uses Rollup's built-in parser (via Vite)
 
 ## Installation
 
@@ -107,6 +107,13 @@ interface NativeFilePluginOptions {
     /** Additional file names to copy (e.g., ['native-file.node-macos', 'addon.node-linux']) */
     fileNames: string[];
   }[];
+
+  /**
+   * Format for generated native file names.
+   * - 'preserve' (default): Keeps original filename with hash suffix (e.g., addon-A1B2C3D4.node)
+   * - 'hash-only': Uses only the hash as filename (e.g., A1B2C3D4.node)
+   */
+  filenameFormat?: "preserve" | "hash-only";
 }
 ```
 
@@ -116,6 +123,9 @@ interface NativeFilePluginOptions {
 nativeFilePlugin({
   // Force enable in dev mode (not typically recommended)
   forced: true,
+
+  // Use hash-only filenames for simpler output
+  filenameFormat: "hash-only", // Generates A1B2C3D4.node instead of addon-A1B2C3D4.node
 
   // Handle packages with non-standard native file extensions
   additionalNativeFiles: [
@@ -131,14 +141,20 @@ nativeFilePlugin({
 
 The plugin intercepts imports of `.node` files during the Vite build process:
 
-1. **Resolution**: Detects when a `.node` file is imported directly
-2. **AST Transformation**: Parses bundled JavaScript using Rollup's built-in AST parser to find all function calls with `.node` string arguments
+1. **Resolution**: Detects when a `.node` file is imported directly or via `node-gyp-build`
+2. **AST Transformation**: Parses bundled JavaScript using Rollup's built-in AST parser to find:
+   - Direct `.node` file requires/imports
+   - `node-gyp-build` runtime selector calls
    - Works regardless of minification or variable name changes
    - No fragile regex patterns - uses proper Abstract Syntax Tree parsing
-   - Handles any require/import pattern after bundling
-3. **Hashing**: Generates a content-based MD5 hash (8 chars) for cache invalidation
-4. **Emission**: Emits the file as a build asset with the hashed filename (e.g., `addon-A1B2C3D4.node`)
-5. **Path Rewriting**: Updates all references to use the hashed filename
+3. **node-gyp-build Resolution**: For `node-gyp-build` patterns:
+   - Resolves the directory path (handles `__dirname`, `path.join`, etc.)
+   - Searches `prebuilds/{platform}-{arch}/` for platform-specific binaries
+   - Falls back to `build/Release/` if needed
+   - Selects the appropriate `.node` file for current platform
+4. **Hashing**: Generates a content-based MD5 hash (8 chars) for cache invalidation
+5. **Emission**: Emits the file as a build asset with the hashed filename (e.g., `addon-A1B2C3D4.node`)
+6. **Path Rewriting**: Updates all references to use the hashed filename
 
 This ensures that:
 
@@ -146,28 +162,7 @@ This ensures that:
 - File names change when content changes (cache busting)
 - Multiple versions can coexist without conflicts
 - Works reliably even with code minification and mangling
-
-## Why This Plugin?
-
-Vite doesn't natively support `.node` files since they're binary Node.js addons that can't be bundled like JavaScript. This plugin bridges that gap by:
-
-- Treating `.node` files as static assets
-- Ensuring they're copied to the output directory
-- Maintaining proper `require()` calls in the built code
-- Supporting content-based cache invalidation
-- Handling non-standard native file extensions (e.g., `.node-macos`, `.node-linux`)
-
-This is especially useful for:
-
-- **Electron apps** that use native Node.js modules
-- Projects using native addons like `better-sqlite3`, `sharp`, `node-canvas`, etc.
-- Any Vite-based Node.js application that depends on compiled `.node` binaries
-- Packages with platform-specific native binaries using custom naming conventions
-
-## Compatibility
-
-- **Vite**: 3+
-- **Node.js**: 18+
+- Runtime selectors are replaced with direct, optimized requires
 
 ## Contributing
 
@@ -176,9 +171,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 MIT © [Ben Williams](https://github.com/biw)
-
-## Related
-
-- [Vite](https://vitejs.dev/)
-- [Native Addons](https://nodejs.org/api/addons.html)
-- [node-gyp](https://github.com/nodejs/node-gyp)
