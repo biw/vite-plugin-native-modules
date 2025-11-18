@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "package.json"
 
 # Required permissions for npm provenance and GitHub releases
 permissions:
