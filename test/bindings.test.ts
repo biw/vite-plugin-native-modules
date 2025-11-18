@@ -254,7 +254,10 @@ const binding = bindings({ bindings: 'binding' });`;
       expect(result).not.toBeNull();
       expect(result.code).toBeDefined();
       // Should use Release version (check hash matches release content)
-      const releaseContent = fs.readFileSync(path.join(releaseDir, "addon.node"));
+      const releaseContent = fs.readFileSync(
+        path.join(releaseDir, "addon.node")
+      );
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const crypto = require("crypto");
       const releaseHash = crypto
         .createHash("md5")
@@ -489,11 +492,7 @@ module.exports = bindings('native');`;
       });
 
       // Simulate better-sqlite3 structure
-      const packageDir = path.join(
-        tempDir,
-        "node_modules",
-        "better-sqlite3"
-      );
+      const packageDir = path.join(tempDir, "node_modules", "better-sqlite3");
       fs.mkdirSync(packageDir, { recursive: true });
 
       // Create package.json
@@ -640,7 +639,9 @@ module.exports = load('binding');`;
 
       expect(transformResult).not.toBeNull();
       expect(transformResult.code).toBeDefined();
-      expect(transformResult.code).toMatch(/require\("\.\/addon-[A-F0-9]{8}\.node"\)/);
+      expect(transformResult.code).toMatch(
+        /require\("\.\/addon-[A-F0-9]{8}\.node"\)/
+      );
 
       // Extract the hashed filename from the transformed code
       const match = transformResult.code.match(/require\("\.\/([^"]+)"\)/);
@@ -718,7 +719,9 @@ module.exports = load('binding');`;
         jsFilePath
       );
 
-      expect(transformResult.code).toMatch(/require\("\.\/[A-F0-9]{8}\.node"\)/);
+      expect(transformResult.code).toMatch(
+        /require\("\.\/[A-F0-9]{8}\.node"\)/
+      );
 
       const match = transformResult.code.match(/require\("\.\/([^"]+)"\)/);
       const hashedFilename = match![1];
@@ -808,7 +811,9 @@ export { addon };`;
 
       if (!transformResult) return;
 
-      const match = transformResult.code.match(/require\(['"]([^'"]+\.node)['"]\)/);
+      const match = transformResult.code.match(
+        /require\(['"]([^'"]+\.node)['"]\)/
+      );
       if (!match) return;
       const hashedFilename = match[1];
 
@@ -851,7 +856,9 @@ module.exports = { addon };`;
 
       if (!transformResult) return;
 
-      const match = transformResult.code.match(/require\(['"]([^'"]+\.node)['"]\)/);
+      const match = transformResult.code.match(
+        /require\(['"]([^'"]+\.node)['"]\)/
+      );
       if (!match) return;
       const hashedFilename = match[1];
 
