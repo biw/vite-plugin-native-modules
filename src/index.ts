@@ -533,6 +533,51 @@ export default function nativeFilePlugin(
     }
   }
 
+  // Helper to register a native file and return its info
+  // Centralizes the hash generation, storage, and reverse mapping logic
+  function registerNativeFile(absolutePath: string): NativeFileInfo {
+    let info = nativeFiles.get(absolutePath);
+    if (!info) {
+      const content = fs.readFileSync(absolutePath);
+      const hash = crypto
+        .createHash("md5")
+        .update(content)
+        .digest("hex")
+        .slice(0, 8);
+      const filename = path.basename(absolutePath);
+      const hashedFilename = generateHashedFilename(filename, hash, absolutePath);
+      info = {
+        content,
+        hashedFilename,
+        originalPath: absolutePath,
+      };
+      nativeFiles.set(absolutePath, info);
+      hashedFilenameToPath.set(hashedFilename, absolutePath);
+    }
+    return info;
+  }
+
+  // Helper to detect module type using Rollup context if available, with fallback
+  // Centralizes the try/catch pattern used in multiple places
+  function detectModuleTypeWithContext(
+    context: { getModuleInfo?: (id: string) => unknown },
+    fileId: string,
+    code?: string
+  ): boolean {
+    try {
+      if (typeof context.getModuleInfo === "function") {
+        const moduleInfo = context.getModuleInfo(fileId);
+        const format = (moduleInfo as { format?: string })?.format;
+        if (format) {
+          return format === "es";
+        }
+      }
+    } catch {
+      // Fall through to fallback
+    }
+    return detectModuleType(fileId, code);
+  }
+
   return {
     configResolved(config) {
       command = config.command;
@@ -628,29 +673,8 @@ export default function nativeFilePlugin(
       // Check if this matches a hashed filename we've generated
       if (hashedFilenameToPath.has(basename)) {
         const originalPath = hashedFilenameToPath.get(basename)!;
-        // Detect module type of the importing file using Rollup's getModuleInfo if available
-        let importingModuleType = false;
-        try {
-          if (typeof this.getModuleInfo === "function" && importer) {
-            const moduleInfo = this.getModuleInfo(importer);
-            // ModuleInfo may have format property at runtime even if TypeScript types don't include it
-            const format = (moduleInfo as { format?: string }).format;
-            if (moduleInfo && format) {
-              importingModuleType = format === "es";
-            } else {
-              // Fallback to detectModuleType if format is not available
-              importingModuleType = detectModuleType(importer);
-            }
-          } else {
-            // Fallback to detectModuleType if getModuleInfo is not available
-            importingModuleType = detectModuleType(importer);
-          }
-        } catch {
-          // Fallback to detectModuleType if getModuleInfo throws
-          importingModuleType = detectModuleType(importer);
-        }
+        const importingModuleType = detectModuleTypeWithContext(this, importer);
         const virtualId = `\0native:${originalPath}`;
-        // Always track module type for this virtual module (even if false/CommonJS)
         virtualModuleTypes.set(virtualId, importingModuleType);
         // Return virtual module ID with syntheticNamedExports enabled
         // This tells Rollup to resolve named exports from the default export's properties,
@@ -671,53 +695,14 @@ export default function nativeFilePlugin(
       // Check if file exists
       if (!fs.existsSync(resolved)) return null;
 
-      // Generate hash from file content
-      const content = fs.readFileSync(resolved);
-      const hash = crypto
-        .createHash("md5")
-        .update(content)
-        .digest("hex")
-        .slice(0, 8);
+      // Register the native file (generates hash, stores mapping)
+      registerNativeFile(resolved);
 
-      // Generate hashed filename
-      const filename = path.basename(source);
-      const hashedFilename = generateHashedFilename(filename, hash, resolved);
-
-      // Store the mapping
-      nativeFiles.set(resolved, {
-        content,
-        hashedFilename,
-        originalPath: resolved,
-      });
-      // Track reverse mapping for resolveId hook
-      hashedFilenameToPath.set(hashedFilename, resolved);
-
-      // Detect module type of the importing file using Rollup's getModuleInfo if available
-      let importingModuleType = false;
-      try {
-        if (typeof this.getModuleInfo === "function" && importer) {
-          const moduleInfo = this.getModuleInfo(importer);
-          // ModuleInfo may have format property at runtime even if TypeScript types don't include it
-          const format = (moduleInfo as { format?: string }).format;
-          if (moduleInfo && format) {
-            importingModuleType = format === "es";
-          } else {
-            // Fallback to detectModuleType if format is not available
-            importingModuleType = detectModuleType(importer);
-          }
-        } else {
-          // Fallback to detectModuleType if getModuleInfo is not available
-          importingModuleType = detectModuleType(importer);
-        }
-      } catch {
-        // Fallback to detectModuleType if getModuleInfo throws
-        importingModuleType = detectModuleType(importer);
-      }
+      // Track module type and return virtual module ID
+      const importingModuleType = detectModuleTypeWithContext(this, importer);
       const virtualId = `\0native:${resolved}`;
-      // Always track module type for this virtual module (even if false/CommonJS)
       virtualModuleTypes.set(virtualId, importingModuleType);
 
-      // Return a virtual module ID
       return virtualId;
     },
 
@@ -781,32 +766,8 @@ export default function nativeFilePlugin(
         const fileURLToPathVars = new Set<string>(); // Variables that reference 'fileURLToPath'
 
         // Detect if this is an ES6 module (vs CommonJS)
-        // Try to use Rollup's built-in module info first (most reliable)
-        let isESModule = false;
+        let isESModule = detectModuleTypeWithContext(this, id, code);
         let hasCreateRequireImport = false;
-
-        // Use Rollup's getModuleInfo if available (most reliable)
-        // getModuleInfo returns module metadata including format
-        try {
-          if (typeof this.getModuleInfo === "function") {
-            const moduleInfo = this.getModuleInfo(id);
-            // ModuleInfo may have format property at runtime even if TypeScript types don't include it
-            const format = (moduleInfo as { format?: string }).format;
-            if (moduleInfo && format) {
-              // format indicates the module format: 'es' = ES module, 'cjs' = CommonJS
-              isESModule = format === "es";
-            } else {
-              // Fallback to our detection if format is not available
-              isESModule = detectModuleType(id, code);
-            }
-          } else {
-            // Fallback to our detection if getModuleInfo is not available
-            isESModule = detectModuleType(id, code);
-          }
-        } catch {
-          // Fallback to our detection if getModuleInfo throws
-          isESModule = detectModuleType(id, code);
-        }
 
         // Also check AST for ImportDeclaration/ExportDeclaration nodes (most reliable)
         // This will override other detection if we find import/export statements
@@ -1254,39 +1215,10 @@ export default function nativeFilePlugin(
               // Only process relative paths with .node extension here
               // Non-relative paths will be handled by Pattern 7
               if (shouldProcessFile(relativePath, id)) {
-                // Resolve the actual path
                 const absolutePath = path.resolve(path.dirname(id), relativePath);
 
                 if (fs.existsSync(absolutePath)) {
-                  // Check if we already processed this file
-                  let info = nativeFiles.get(absolutePath);
-
-                  if (!info) {
-                    // Generate hash and store
-                    const content = fs.readFileSync(absolutePath);
-                    const hash = crypto
-                      .createHash("md5")
-                      .update(content)
-                      .digest("hex")
-                      .slice(0, 8);
-
-                    // Generate hashed filename
-                    // e.g., addon.node -> addon-HASH.node (or HASH.node if hash-only)
-                    //       native-file.node-macos -> native-file-HASH.node-macos (or HASH.node-macos if hash-only)
-                    const filename = path.basename(relativePath);
-                    const hashedFilename = generateHashedFilename(filename, hash, absolutePath);
-
-                    info = {
-                      content,
-                      hashedFilename,
-                      originalPath: absolutePath,
-                    };
-                    nativeFiles.set(absolutePath, info);
-                    // Track reverse mapping for resolveId hook
-                    hashedFilenameToPath.set(hashedFilename, absolutePath);
-                  }
-
-                  // Record the replacement
+                  const info = registerNativeFile(absolutePath);
                   replacements.push({
                     start: literalNode.start,
                     end: literalNode.end,
@@ -1297,21 +1229,22 @@ export default function nativeFilePlugin(
               }
             }
 
-            // Pattern 6: NAPI-RS style join(__dirname, 'xxx.node') or path.join(__dirname, 'xxx.node')
-            // This pattern is used by NAPI-RS generated loaders like libsql-js:
-            //   existsSync(join(__dirname, 'libsql.darwin-arm64.node'))
-            // We need to rewrite the string literal to use the hashed filename
-            if (
-              isMemberExpression(calleeNode) &&
-              isIdentifier(calleeNode.object) &&
-              (pathModuleVars.has(calleeNode.object.name) ||
-                calleeNode.object.name === "path") &&
-              isIdentifier(calleeNode.property) &&
-              (calleeNode.property.name === "join" ||
-                calleeNode.property.name === "resolve") &&
-              node.arguments.length >= 2
-            ) {
-              // Check if first arg is __dirname or a directory variable
+            // Pattern 6 & 6b: NAPI-RS style path.join/__dirname patterns
+            // Pattern 6: path.join(__dirname, 'xxx.node') or pathAlias.join(__dirname, 'xxx.node')
+            // Pattern 6b: join(__dirname, 'xxx.node') (destructured)
+            // Used by NAPI-RS loaders like libsql-js: existsSync(join(__dirname, 'libsql.darwin-arm64.node'))
+            const isPathJoinCall =
+              (isMemberExpression(calleeNode) &&
+                isIdentifier(calleeNode.object) &&
+                (pathModuleVars.has(calleeNode.object.name) ||
+                  calleeNode.object.name === "path") &&
+                isIdentifier(calleeNode.property) &&
+                (calleeNode.property.name === "join" ||
+                  calleeNode.property.name === "resolve")) ||
+              (isIdentifier(calleeNode) && calleeNode.name === "join");
+
+            if (isPathJoinCall && node.arguments.length >= 2) {
+              // Resolve base directory from first argument
               const firstArg = node.arguments[0];
               let baseDir: string | null = null;
 
@@ -1332,127 +1265,18 @@ export default function nativeFilePlugin(
                   typeof lastArg.value === "string" &&
                   lastArg.value.endsWith(".node")
                 ) {
-                  const nodeFileName = lastArg.value;
-                  // Resolve the full path
+                  // Resolve the full path from all arguments
                   const parts: string[] = [baseDir];
-                  for (let i = 1; i < node.arguments.length - 1; i++) {
+                  for (let i = 1; i < node.arguments.length; i++) {
                     const arg = node.arguments[i];
                     if (isLiteral(arg) && typeof arg.value === "string") {
                       parts.push(arg.value);
                     }
                   }
-                  parts.push(nodeFileName);
                   const absolutePath = path.join(...parts);
 
                   if (fs.existsSync(absolutePath)) {
-                    // Check if we already processed this file
-                    let info = nativeFiles.get(absolutePath);
-
-                    if (!info) {
-                      // Generate hash and store
-                      const content = fs.readFileSync(absolutePath);
-                      const hash = crypto
-                        .createHash("md5")
-                        .update(content)
-                        .digest("hex")
-                        .slice(0, 8);
-
-                      const hashedFilename = generateHashedFilename(
-                        nodeFileName,
-                        hash,
-                        absolutePath
-                      );
-
-                      info = {
-                        content,
-                        hashedFilename,
-                        originalPath: absolutePath,
-                      };
-                      nativeFiles.set(absolutePath, info);
-                      hashedFilenameToPath.set(hashedFilename, absolutePath);
-                    }
-
-                    // Record the replacement for the string literal
-                    replacements.push({
-                      start: lastArg.start,
-                      end: lastArg.end,
-                      value: `'${info.hashedFilename}'`,
-                    });
-                    modified = true;
-                  }
-                }
-              }
-            }
-
-            // Pattern 6b: Destructured join(__dirname, 'xxx.node') without path. prefix
-            // Handles: const { join } = require('path'); join(__dirname, 'xxx.node')
-            if (
-              isIdentifier(calleeNode) &&
-              calleeNode.name === "join" &&
-              node.arguments.length >= 2
-            ) {
-              // Check if first arg is __dirname or a directory variable
-              const firstArg = node.arguments[0];
-              let baseDir: string | null = null;
-
-              if (isIdentifier(firstArg) && firstArg.name === "__dirname") {
-                baseDir = path.dirname(id);
-              } else if (
-                isIdentifier(firstArg) &&
-                directoryVars.has(firstArg.name)
-              ) {
-                baseDir = directoryVars.get(firstArg.name)!;
-              }
-
-              if (baseDir) {
-                // Check if last argument is a .node file string literal
-                const lastArg = node.arguments[node.arguments.length - 1];
-                if (
-                  isLiteral(lastArg) &&
-                  typeof lastArg.value === "string" &&
-                  lastArg.value.endsWith(".node")
-                ) {
-                  const nodeFileName = lastArg.value;
-                  // Resolve the full path
-                  const parts: string[] = [baseDir];
-                  for (let i = 1; i < node.arguments.length - 1; i++) {
-                    const arg = node.arguments[i];
-                    if (isLiteral(arg) && typeof arg.value === "string") {
-                      parts.push(arg.value);
-                    }
-                  }
-                  parts.push(nodeFileName);
-                  const absolutePath = path.join(...parts);
-
-                  if (fs.existsSync(absolutePath)) {
-                    // Check if we already processed this file
-                    let info = nativeFiles.get(absolutePath);
-
-                    if (!info) {
-                      // Generate hash and store
-                      const content = fs.readFileSync(absolutePath);
-                      const hash = crypto
-                        .createHash("md5")
-                        .update(content)
-                        .digest("hex")
-                        .slice(0, 8);
-
-                      const hashedFilename = generateHashedFilename(
-                        nodeFileName,
-                        hash,
-                        absolutePath
-                      );
-
-                      info = {
-                        content,
-                        hashedFilename,
-                        originalPath: absolutePath,
-                      };
-                      nativeFiles.set(absolutePath, info);
-                      hashedFilenameToPath.set(hashedFilename, absolutePath);
-                    }
-
-                    // Record the replacement for the string literal
+                    const info = registerNativeFile(absolutePath);
                     replacements.push({
                       start: lastArg.start,
                       end: lastArg.end,
@@ -1491,35 +1315,7 @@ export default function nativeFilePlugin(
                 );
 
                 if (nodeFilePath) {
-                  // Check if we already processed this file
-                  let info = nativeFiles.get(nodeFilePath);
-
-                  if (!info) {
-                    // Generate hash and store
-                    const content = fs.readFileSync(nodeFilePath);
-                    const hash = crypto
-                      .createHash("md5")
-                      .update(content)
-                      .digest("hex")
-                      .slice(0, 8);
-
-                    const filename = path.basename(nodeFilePath);
-                    const hashedFilename = generateHashedFilename(
-                      filename,
-                      hash,
-                      nodeFilePath
-                    );
-
-                    info = {
-                      content,
-                      hashedFilename,
-                      originalPath: nodeFilePath,
-                    };
-                    nativeFiles.set(nodeFilePath, info);
-                    hashedFilenameToPath.set(hashedFilename, nodeFilePath);
-                  }
-
-                  // Record the replacement for the entire require call argument
+                  const info = registerNativeFile(nodeFilePath);
                   const literalNode = node.arguments[0] as LiteralNode;
                   replacements.push({
                     start: literalNode.start,
@@ -1565,36 +1361,7 @@ export default function nativeFilePlugin(
 
                   if (result) {
                     const { nodeFilePath } = result;
-
-                    // Check if we already processed this file
-                    let info = nativeFiles.get(nodeFilePath);
-
-                    if (!info) {
-                      // Generate hash and store
-                      const content = fs.readFileSync(nodeFilePath);
-                      const hash = crypto
-                        .createHash("md5")
-                        .update(content)
-                        .digest("hex")
-                        .slice(0, 8);
-
-                      const filename = path.basename(nodeFilePath);
-                      const hashedFilename = generateHashedFilename(
-                        filename,
-                        hash,
-                        nodeFilePath
-                      );
-
-                      info = {
-                        content,
-                        hashedFilename,
-                        originalPath: nodeFilePath,
-                      };
-                      nativeFiles.set(nodeFilePath, info);
-                      hashedFilenameToPath.set(hashedFilename, nodeFilePath);
-                    }
-
-                    // Replace the entire template literal with the resolved path
+                    const info = registerNativeFile(nodeFilePath);
                     const templateNode = node.arguments[0];
                     if (
                       templateNode.start !== undefined &&
@@ -1743,30 +1510,7 @@ export default function nativeFilePlugin(
           nodeFilePath: string,
           callNode: CallExpressionNode
         ): void {
-          // Check if we already processed this file
-          let info = nativeFiles.get(nodeFilePath);
-
-          if (!info) {
-            // Generate hash and store
-            const content = fs.readFileSync(nodeFilePath);
-            const hash = crypto
-              .createHash("md5")
-              .update(content)
-              .digest("hex")
-              .slice(0, 8);
-
-            const filename = path.basename(nodeFilePath);
-            const hashedFilename = generateHashedFilename(filename, hash, nodeFilePath);
-
-            info = {
-              content,
-              hashedFilename,
-              originalPath: nodeFilePath,
-            };
-            nativeFiles.set(nodeFilePath, info);
-            // Track reverse mapping for resolveId hook
-            hashedFilenameToPath.set(hashedFilename, nodeFilePath);
-          }
+          const info = registerNativeFile(nodeFilePath);
 
           // Determine how to generate the replacement code
           let replacementCode: string;
