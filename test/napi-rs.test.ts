@@ -718,4 +718,203 @@ describe("NAPI-RS Support", () => {
       }
     });
   });
+
+  describe("Rollup interop - syntheticNamedExports", () => {
+    /**
+     * This test suite covers the fix for the "databaseOpen is not a function" error.
+     *
+     * The issue: When Rollup bundles a native module, it wraps it with getAugmentedNamespace
+     * which creates { __esModule: true, default: nativeModule }. When code destructures
+     * like `const { databaseOpen } = require('@libsql/...')`, it fails because databaseOpen
+     * is on the default export, not the namespace object.
+     *
+     * The fix: resolveId returns { id, syntheticNamedExports: true } which tells Rollup
+     * to resolve named exports from the default export's properties.
+     */
+
+    it("should return syntheticNamedExports: true from resolveId for hashed .node files", async () => {
+      const plugin = nativeFilePlugin() as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      // Create a .node file
+      const nodeFilePath = path.join(tempDir, "native.node");
+      fs.writeFileSync(nodeFilePath, Buffer.from("native binary"));
+
+      // Transform code to generate hashed filename
+      const jsFilePath = path.join(tempDir, "index.js");
+      const code = `const native = require('./native.node');`;
+
+      const context = { parse };
+      const transformResult = (plugin.transform as any).call(
+        context,
+        code,
+        jsFilePath
+      );
+
+      expect(transformResult).toBeDefined();
+
+      // Extract hashed filename from transformed code
+      const match = transformResult.code.match(/require\("\.\/([^"]+\.node)"\)/);
+      expect(match).toBeDefined();
+      const hashedFilename = match![1];
+
+      // Now test resolveId returns object with syntheticNamedExports
+      const resolveResult = await (plugin.resolveId as any).call(
+        {} as any,
+        `./${hashedFilename}`,
+        jsFilePath,
+        {}
+      );
+
+      expect(resolveResult).toBeDefined();
+      expect(typeof resolveResult).toBe("object");
+      expect(resolveResult.id).toContain("\0native:");
+      expect(resolveResult.syntheticNamedExports).toBe(true);
+    });
+
+    it("should generate ES module code in load hook that enables destructuring", async () => {
+      const plugin = nativeFilePlugin() as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      // Create a .node file
+      const nodeFilePath = path.join(tempDir, "native.node");
+      fs.writeFileSync(nodeFilePath, Buffer.from("native binary"));
+
+      // Transform code to generate hashed filename
+      const esmFilePath = path.join(tempDir, "index.mjs");
+      const code = `
+        import { createRequire } from 'module';
+        const require = createRequire(import.meta.url);
+        const native = require('./native.node');
+      `;
+
+      const moduleAwareParse = (code: string) =>
+        acornParse(code, { ecmaVersion: "latest", sourceType: "module" });
+      const context = { parse: moduleAwareParse };
+      const transformResult = (plugin.transform as any).call(
+        context,
+        code,
+        esmFilePath
+      );
+
+      expect(transformResult).toBeDefined();
+
+      // Extract hashed filename - try multiple patterns
+      let match = transformResult.code.match(
+        /createRequire\(import\.meta\.url\)\("\.\/([^"]+\.node)"\)/
+      );
+      if (!match) {
+        match = transformResult.code.match(/require\("\.\/([^"]+\.node)"\)/);
+      }
+      if (!match) {
+        match = transformResult.code.match(/require\('\.\/([^']+\.node)'\)/);
+      }
+      expect(match).not.toBeNull();
+      const hashedFilename = match![1];
+
+      // Get virtual module ID
+      const resolveResult = await (plugin.resolveId as any).call(
+        {} as any,
+        `./${hashedFilename}`,
+        esmFilePath,
+        {}
+      );
+
+      const virtualId =
+        typeof resolveResult === "object" ? resolveResult.id : resolveResult;
+
+      // Test load hook output
+      const loadResult = await (plugin.load as any).call({} as any, virtualId);
+
+      expect(loadResult).toBeDefined();
+      // Should use ES module syntax with default export
+      expect(loadResult).toContain("export default");
+      expect(loadResult).toContain("createRequire");
+      // The default export enables syntheticNamedExports to work
+      // When Rollup sees `import { foo } from 'virtual-module'` and syntheticNamedExports is true,
+      // it will look for `foo` on the default export
+    });
+
+    it("should work with libsql-style destructuring pattern", async () => {
+      const plugin = nativeFilePlugin() as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      // Create platform package with .node file
+      const nodeModulesDir = path.join(tempDir, "node_modules");
+      const scopeDir = path.join(nodeModulesDir, "@libsql");
+      const packageDir = path.join(scopeDir, `${platform}-${arch}`);
+      fs.mkdirSync(packageDir, { recursive: true });
+
+      const nodeFilePath = path.join(packageDir, "index.node");
+      fs.writeFileSync(nodeFilePath, Buffer.from("libsql native binding"));
+
+      fs.writeFileSync(
+        path.join(packageDir, "package.json"),
+        JSON.stringify({
+          name: `@libsql/${platform}-${arch}`,
+          main: "index.node",
+        })
+      );
+
+      // Code that destructures named exports (like libsql does)
+      // This pattern was failing with "databaseOpen is not a function"
+      const jsFilePath = path.join(tempDir, "index.js");
+      const code = `
+        const { currentTarget } = require('@neon-rs/load');
+        let target = currentTarget();
+
+        // This destructuring pattern requires syntheticNamedExports to work
+        const {
+          databaseOpen,
+          databaseClose,
+          databaseExecSync,
+        } = require(\`@libsql/\${target}\`);
+
+        module.exports = { databaseOpen, databaseClose, databaseExecSync };
+      `;
+
+      const context = { parse };
+      const transformResult = (plugin.transform as any).call(
+        context,
+        code,
+        jsFilePath
+      );
+
+      expect(transformResult).toBeDefined();
+      expect(transformResult.code).toBeDefined();
+
+      // Should have transformed the template literal to use hashed .node file
+      expect(transformResult.code).toMatch(/[A-F0-9]{8}\.node/);
+
+      // The require should be rewritten to a relative path
+      expect(transformResult.code).not.toContain("`@libsql/");
+
+      // Extract the hashed filename and verify resolveId returns syntheticNamedExports
+      const match = transformResult.code.match(/require\("\.\/([^"]+\.node)"\)/);
+      expect(match).toBeDefined();
+
+      const resolveResult = await (plugin.resolveId as any).call(
+        {} as any,
+        `./${match![1]}`,
+        jsFilePath,
+        {}
+      );
+
+      // This is the critical fix - syntheticNamedExports must be true
+      // so that destructuring like { databaseOpen, ... } works
+      expect(resolveResult.syntheticNamedExports).toBe(true);
+    });
+  });
 });
