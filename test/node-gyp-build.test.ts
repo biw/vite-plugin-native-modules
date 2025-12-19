@@ -1993,13 +1993,15 @@ const binding = nodeGypBuild(__dirname);`;
       if (!match) return;
       const hashedFilename = match[1];
 
-      const virtualId = await (plugin.resolveId as any).call(
+      const resolveResult = await (plugin.resolveId as any).call(
         {} as any,
         `./${hashedFilename}`,
         esmFilePath,
         {}
       );
 
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
       expect(loadResult).toContain("import { createRequire }");
@@ -2041,13 +2043,15 @@ const binding = nodeGypBuild(__dirname);`;
       if (!match) return;
       const hashedFilename = match[1];
 
-      const virtualId = await (plugin.resolveId as any).call(
+      const resolveResult = await (plugin.resolveId as any).call(
         {} as any,
         `./${hashedFilename}`,
         cjsFilePath,
         {}
       );
 
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
       expect(loadResult).toContain("module.exports");

@@ -77,14 +77,16 @@ export { addon };`;
       const hashedFilename = match![1];
 
       // Resolve the virtual module ID
-      const virtualId = await (plugin.resolveId as any).call(
+      const resolveResult = await (plugin.resolveId as any).call(
         {} as any,
         `./${hashedFilename}`,
         esmFilePath,
         {}
       );
 
-      expect(virtualId).toBeDefined();
+      expect(resolveResult).toBeDefined();
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       expect(virtualId).toContain("\0native:");
 
       // Check load hook output
@@ -151,16 +153,18 @@ export { addon };`;
       expect(match).not.toBeNull();
       const hashedFilename = match![1];
 
-      const virtualId = await (plugin.resolveId as any).call(
+      const resolveResult2 = await (plugin.resolveId as any).call(
         {} as any,
         `./${hashedFilename}`,
         esmFilePath,
         {}
       );
 
-      const loadResult = await (plugin.load as any).call({} as any, virtualId);
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const virtualId2 = typeof resolveResult2 === "object" ? resolveResult2.id : resolveResult2;
+      const loadResult = await (plugin.load as any).call({} as any, virtualId2);
       expect(loadResult).toBeDefined();
-      
+
       // Should generate ES module syntax
       expect(loadResult).toContain("import { createRequire }");
       expect(loadResult).toContain("export default");
@@ -208,20 +212,22 @@ module.exports = { addon };`;
       expect(match).not.toBeNull();
       const hashedFilename = match![1];
 
-      const virtualId = await (plugin.resolveId as any).call(
+      const resolveResult = await (plugin.resolveId as any).call(
         {} as any,
         `./${hashedFilename}`,
         cjsFilePath,
         {}
       );
 
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
-      
+
       // Should generate CommonJS syntax
       expect(loadResult).toContain("module.exports");
       expect(loadResult).toContain("require(");
-      
+
       // Should NOT contain ES module syntax
       expect(loadResult).not.toContain("import { createRequire }");
       expect(loadResult).not.toContain("export default");
@@ -279,16 +285,18 @@ const binding = nodeGypBuild(__dirname);`;
       expect(match).not.toBeNull();
       const hashedFilename = match![1];
 
-      const virtualId = await (plugin.resolveId as any).call(
+      const resolveResult = await (plugin.resolveId as any).call(
         {} as any,
         `./${hashedFilename}`,
         esmFilePath,
         {}
       );
 
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
-      
+
       // Should generate ES module syntax
       expect(loadResult).toContain("import { createRequire }");
       expect(loadResult).toContain("export default");
@@ -350,16 +358,18 @@ const binding = nodeGypBuild(__dirname);`;
       expect(match).not.toBeNull();
       const hashedFilename = match![1];
 
-      const virtualId = await (plugin.resolveId as any).call(
+      const resolveResult = await (plugin.resolveId as any).call(
         {} as any,
         `./${hashedFilename}`,
         esmFilePath,
         {}
       );
 
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
-      
+
       // Should generate ES module syntax (detected from package.json type: module)
       expect(loadResult).toContain("import { createRequire }");
       expect(loadResult).toContain("export default");
@@ -411,16 +421,18 @@ const binding = nodeGypBuild(__dirname);`;
       expect(match).not.toBeNull();
       const hashedFilename = match![1];
 
-      const virtualId = await (plugin.resolveId as any).call(
+      const resolveResult = await (plugin.resolveId as any).call(
         {} as any,
         `./${hashedFilename}`,
         cjsFilePath,
         {}
       );
 
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
-      
+
       // Should generate CommonJS syntax
       expect(loadResult).toContain("module.exports");
       expect(loadResult).toContain("require(");

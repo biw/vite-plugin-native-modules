@@ -348,27 +348,234 @@ export default function nativeFilePlugin(
     return null;
   }
 
+  // Helper function to resolve an npm package and find a .node file
+  // Returns the path to the .node file if found, null otherwise
+  function resolveNpmPackageNodeFile(
+    packageName: string,
+    fromDir: string
+  ): string | null {
+    // Walk up directories looking for node_modules
+    let currentDir = fromDir;
+    const root = path.parse(fromDir).root;
+
+    while (currentDir !== root && currentDir !== path.dirname(currentDir)) {
+      const nodeModulesDir = path.join(currentDir, "node_modules");
+
+      if (fs.existsSync(nodeModulesDir)) {
+        // Handle scoped packages (@scope/name) and regular packages
+        const packageDir = path.join(nodeModulesDir, packageName);
+
+        if (fs.existsSync(packageDir)) {
+          // Try to read package.json to find the main entry
+          const packageJsonPath = path.join(packageDir, "package.json");
+
+          if (fs.existsSync(packageJsonPath)) {
+            try {
+              const packageJson = JSON.parse(
+                fs.readFileSync(packageJsonPath, "utf-8")
+              );
+
+              // Check if main points to a .node file
+              if (packageJson.main && packageJson.main.endsWith(".node")) {
+                const mainPath = path.join(packageDir, packageJson.main);
+                if (fs.existsSync(mainPath)) {
+                  return mainPath;
+                }
+              }
+            } catch {
+              // Ignore JSON parse errors
+            }
+          }
+
+          // Check for index.node as fallback
+          const indexNodePath = path.join(packageDir, "index.node");
+          if (fs.existsSync(indexNodePath)) {
+            return indexNodePath;
+          }
+
+          // Check for any .node file directly in the package directory
+          try {
+            const files = fs.readdirSync(packageDir);
+            const nodeFile = files.find((f) => f.endsWith(".node"));
+            if (nodeFile) {
+              return path.join(packageDir, nodeFile);
+            }
+          } catch {
+            // Ignore read errors
+          }
+        }
+      }
+
+      currentDir = path.dirname(currentDir);
+    }
+
+    return null;
+  }
+
+  // Helper function to find platform-specific native packages matching a scope pattern
+  // Used for template literal requires like require(`@libsql/${target}`)
+  // Returns the path to the .node file for the current platform, or null
+  function findPlatformSpecificNativePackage(
+    scopePrefix: string, // e.g., "@libsql/" or "@scope/prefix-"
+    fromDir: string
+  ): { packageName: string; nodeFilePath: string } | null {
+    // Common platform/arch combinations for native modules
+    const platform = process.platform;
+    const arch = process.arch;
+
+    // Common naming patterns for platform-specific packages
+    const platformPatterns = [
+      `${platform}-${arch}`, // darwin-arm64, linux-x64
+      `${platform}-${arch}-gnu`, // linux-x64-gnu
+      `${platform}-${arch}-musl`, // linux-x64-musl
+      `${platform}${arch === "x64" ? "64" : arch === "ia32" ? "32" : arch}`, // darwin64, linux64
+    ];
+
+    // Walk up directories looking for node_modules
+    let currentDir = fromDir;
+    const root = path.parse(fromDir).root;
+
+    while (currentDir !== root && currentDir !== path.dirname(currentDir)) {
+      const nodeModulesDir = path.join(currentDir, "node_modules");
+
+      if (fs.existsSync(nodeModulesDir)) {
+        // Try each platform pattern
+        for (const platformPattern of platformPatterns) {
+          const packageName = `${scopePrefix}${platformPattern}`;
+          const result = resolveNpmPackageNodeFile(packageName, currentDir);
+          if (result) {
+            return { packageName, nodeFilePath: result };
+          }
+        }
+
+        // If scope prefix starts with @, also try scanning the scope directory
+        if (scopePrefix.startsWith("@")) {
+          const scopeName = scopePrefix.split("/")[0]; // @libsql
+          const scopeDir = path.join(nodeModulesDir, scopeName);
+
+          if (fs.existsSync(scopeDir)) {
+            try {
+              const packages = fs.readdirSync(scopeDir);
+              for (const pkg of packages) {
+                // Check if this package matches current platform
+                const lowerPkg = pkg.toLowerCase();
+                const lowerPlatform = platform.toLowerCase();
+                const lowerArch = arch.toLowerCase();
+
+                if (
+                  lowerPkg.includes(lowerPlatform) &&
+                  lowerPkg.includes(lowerArch)
+                ) {
+                  const packageName = `${scopeName}/${pkg}`;
+                  const result = resolveNpmPackageNodeFile(
+                    packageName,
+                    currentDir
+                  );
+                  if (result) {
+                    return { packageName, nodeFilePath: result };
+                  }
+                }
+              }
+            } catch {
+              // Ignore read errors
+            }
+          }
+        }
+      }
+
+      currentDir = path.dirname(currentDir);
+    }
+
+    return null;
+  }
+
+  // Helper function to extract package name from a file path
+  // For paths like /node_modules/@libsql/darwin-arm64/index.node -> libsql-darwin-arm64
+  // For paths like /node_modules/sql/native.node -> sql
+  function extractPackageName(filePath: string): string | null {
+    const nodeModulesMatch = filePath.match(
+      /node_modules[/\\](@[^/\\]+[/\\][^/\\]+|[^/\\]+)/
+    );
+    if (nodeModulesMatch) {
+      // Convert to file-safe format: @scope/package -> scope-package (remove @ and replace slashes)
+      return nodeModulesMatch[1].replace(/^@/, "").replace(/[/\\]/g, "-");
+    }
+    return null;
+  }
+
   // Helper function to generate hashed filename based on format option
+  // originalPath is optional - when provided, we can extract package name for prefix
   function generateHashedFilename(
     originalFilename: string,
-    hash: string
+    hash: string,
+    originalPath?: string
   ): string {
     const lastDotIndex = originalFilename.lastIndexOf(".");
     const extension =
       lastDotIndex > 0 ? originalFilename.slice(lastDotIndex) : "";
+    const baseName =
+      lastDotIndex > 0 ? originalFilename.slice(0, lastDotIndex) : originalFilename;
 
     if (options.filenameFormat === "hash-only") {
       // Hash-only format: HASH.node
       return `${hash.toUpperCase()}${extension}`;
     } else {
-      // Preserve format (default): filename-HASH.node
-      return lastDotIndex > 0
-        ? `${originalFilename.slice(
-            0,
-            lastDotIndex
-          )}-${hash.toUpperCase()}${extension}`
-        : `${originalFilename}-${hash.toUpperCase()}`;
+      // Preserve format (default): packagename-filename-HASH.node
+      // Extract package name if we have the original path
+      let prefix = "";
+      if (originalPath) {
+        const packageName = extractPackageName(originalPath);
+        if (packageName) {
+          prefix = `${packageName}-`;
+        }
+      }
+      return `${prefix}${baseName}-${hash.toUpperCase()}${extension}`;
     }
+  }
+
+  // Helper to register a native file and return its info
+  // Centralizes the hash generation, storage, and reverse mapping logic
+  function registerNativeFile(absolutePath: string): NativeFileInfo {
+    let info = nativeFiles.get(absolutePath);
+    if (!info) {
+      const content = fs.readFileSync(absolutePath);
+      const hash = crypto
+        .createHash("md5")
+        .update(content)
+        .digest("hex")
+        .slice(0, 8);
+      const filename = path.basename(absolutePath);
+      const hashedFilename = generateHashedFilename(filename, hash, absolutePath);
+      info = {
+        content,
+        hashedFilename,
+        originalPath: absolutePath,
+      };
+      nativeFiles.set(absolutePath, info);
+      hashedFilenameToPath.set(hashedFilename, absolutePath);
+    }
+    return info;
+  }
+
+  // Helper to detect module type using Rollup context if available, with fallback
+  // Centralizes the try/catch pattern used in multiple places
+  function detectModuleTypeWithContext(
+    context: { getModuleInfo?: (id: string) => unknown },
+    fileId: string,
+    code?: string
+  ): boolean {
+    try {
+      if (typeof context.getModuleInfo === "function") {
+        const moduleInfo = context.getModuleInfo(fileId);
+        const format = (moduleInfo as { format?: string })?.format;
+        if (format) {
+          return format === "es";
+        }
+      }
+    } catch {
+      // Fall through to fallback
+    }
+    return detectModuleType(fileId, code);
   }
 
   return {
@@ -426,15 +633,19 @@ export default function nativeFilePlugin(
 
       // Return proxy code that requires the hashed file
       // The hashed file will be in the same directory as the output bundle
+      //
+      // We use syntheticNamedExports (set in resolveId) to tell Rollup to resolve
+      // any named export requests from the default export's properties.
+      // This way, `const { databaseOpen } = require(...)` works correctly
+      // because Rollup gets databaseOpen from default.databaseOpen.
       if (isESModule) {
-        // ES module syntax
         return `
           import { createRequire } from 'node:module';
           const createRequireLocal = createRequire(import.meta.url);
-          export default createRequireLocal('./${info.hashedFilename}');
+          const nativeModule = createRequireLocal('./${info.hashedFilename}');
+          export default nativeModule;
         `;
       } else {
-        // CommonJS syntax - use require directly since we're in CommonJS context
         return `
           module.exports = require('./${info.hashedFilename}');
         `;
@@ -462,32 +673,17 @@ export default function nativeFilePlugin(
       // Check if this matches a hashed filename we've generated
       if (hashedFilenameToPath.has(basename)) {
         const originalPath = hashedFilenameToPath.get(basename)!;
-        // Detect module type of the importing file using Rollup's getModuleInfo if available
-        let importingModuleType = false;
-        try {
-          if (typeof this.getModuleInfo === "function" && importer) {
-            const moduleInfo = this.getModuleInfo(importer);
-            // ModuleInfo may have format property at runtime even if TypeScript types don't include it
-            const format = (moduleInfo as { format?: string }).format;
-            if (moduleInfo && format) {
-              importingModuleType = format === "es";
-            } else {
-              // Fallback to detectModuleType if format is not available
-              importingModuleType = detectModuleType(importer);
-            }
-          } else {
-            // Fallback to detectModuleType if getModuleInfo is not available
-            importingModuleType = detectModuleType(importer);
-          }
-        } catch {
-          // Fallback to detectModuleType if getModuleInfo throws
-          importingModuleType = detectModuleType(importer);
-        }
+        const importingModuleType = detectModuleTypeWithContext(this, importer);
         const virtualId = `\0native:${originalPath}`;
-        // Always track module type for this virtual module (even if false/CommonJS)
         virtualModuleTypes.set(virtualId, importingModuleType);
-        // Return virtual module ID so load hook can handle it
-        return virtualId;
+        // Return virtual module ID with syntheticNamedExports enabled
+        // This tells Rollup to resolve named exports from the default export's properties,
+        // which fixes the getAugmentedNamespace issue where destructuring fails
+        // because properties like databaseOpen aren't copied to the namespace.
+        return {
+          id: virtualId,
+          syntheticNamedExports: true,
+        };
       }
 
       // Check if this file should be processed
@@ -499,53 +695,14 @@ export default function nativeFilePlugin(
       // Check if file exists
       if (!fs.existsSync(resolved)) return null;
 
-      // Generate hash from file content
-      const content = fs.readFileSync(resolved);
-      const hash = crypto
-        .createHash("md5")
-        .update(content)
-        .digest("hex")
-        .slice(0, 8);
+      // Register the native file (generates hash, stores mapping)
+      registerNativeFile(resolved);
 
-      // Generate hashed filename
-      const filename = path.basename(source);
-      const hashedFilename = generateHashedFilename(filename, hash);
-
-      // Store the mapping
-      nativeFiles.set(resolved, {
-        content,
-        hashedFilename,
-        originalPath: resolved,
-      });
-      // Track reverse mapping for resolveId hook
-      hashedFilenameToPath.set(hashedFilename, resolved);
-
-      // Detect module type of the importing file using Rollup's getModuleInfo if available
-      let importingModuleType = false;
-      try {
-        if (typeof this.getModuleInfo === "function" && importer) {
-          const moduleInfo = this.getModuleInfo(importer);
-          // ModuleInfo may have format property at runtime even if TypeScript types don't include it
-          const format = (moduleInfo as { format?: string }).format;
-          if (moduleInfo && format) {
-            importingModuleType = format === "es";
-          } else {
-            // Fallback to detectModuleType if format is not available
-            importingModuleType = detectModuleType(importer);
-          }
-        } else {
-          // Fallback to detectModuleType if getModuleInfo is not available
-          importingModuleType = detectModuleType(importer);
-        }
-      } catch {
-        // Fallback to detectModuleType if getModuleInfo throws
-        importingModuleType = detectModuleType(importer);
-      }
+      // Track module type and return virtual module ID
+      const importingModuleType = detectModuleTypeWithContext(this, importer);
       const virtualId = `\0native:${resolved}`;
-      // Always track module type for this virtual module (even if false/CommonJS)
       virtualModuleTypes.set(virtualId, importingModuleType);
 
-      // Return a virtual module ID
       return virtualId;
     },
 
@@ -555,7 +712,7 @@ export default function nativeFilePlugin(
 
       if (!enabled) return null;
 
-      // Only process files that mention .node, node-gyp-build, or bindings
+      // Only process files that mention .node, node-gyp-build, bindings, or native platform packages
       // For bindings, we check for the exact package name patterns to avoid false positives
       const hasBindingsPackage =
         code.includes("require('bindings')") ||
@@ -563,10 +720,17 @@ export default function nativeFilePlugin(
         code.includes("from 'bindings'") ||
         code.includes('from "bindings"');
 
+      // Check for template literal requires that might be platform-specific native packages
+      // These patterns are used by NAPI-RS/neon-rs for platform-specific native modules
+      // e.g., require(`@libsql/${target}`) or require(`@scope/${platform}`)
+      const hasTemplateLiteralNativePackage =
+        /require\s*\(\s*`@[a-z0-9-]+\//.test(code);
+
       if (
         !code.includes(".node") &&
         !code.includes("node-gyp-build") &&
-        !hasBindingsPackage
+        !hasBindingsPackage &&
+        !hasTemplateLiteralNativePackage
       )
         return null;
 
@@ -602,32 +766,8 @@ export default function nativeFilePlugin(
         const fileURLToPathVars = new Set<string>(); // Variables that reference 'fileURLToPath'
 
         // Detect if this is an ES6 module (vs CommonJS)
-        // Try to use Rollup's built-in module info first (most reliable)
-        let isESModule = false;
+        let isESModule = detectModuleTypeWithContext(this, id, code);
         let hasCreateRequireImport = false;
-
-        // Use Rollup's getModuleInfo if available (most reliable)
-        // getModuleInfo returns module metadata including format
-        try {
-          if (typeof this.getModuleInfo === "function") {
-            const moduleInfo = this.getModuleInfo(id);
-            // ModuleInfo may have format property at runtime even if TypeScript types don't include it
-            const format = (moduleInfo as { format?: string }).format;
-            if (moduleInfo && format) {
-              // format indicates the module format: 'es' = ES module, 'cjs' = CommonJS
-              isESModule = format === "es";
-            } else {
-              // Fallback to our detection if format is not available
-              isESModule = detectModuleType(id, code);
-            }
-          } else {
-            // Fallback to our detection if getModuleInfo is not available
-            isESModule = detectModuleType(id, code);
-          }
-        } catch {
-          // Fallback to our detection if getModuleInfo throws
-          isESModule = detectModuleType(id, code);
-        }
 
         // Also check AST for ImportDeclaration/ExportDeclaration nodes (most reliable)
         // This will override other detection if we find import/export statements
@@ -1062,6 +1202,7 @@ export default function nativeFilePlugin(
               }
             }
             // Pattern 5: Regular require('./addon.node') calls
+            // Note: Using nested if instead of early return to allow Pattern 7 to run
             else if (
               node.arguments.length === 1 &&
               isLiteral(node.arguments[0]) &&
@@ -1071,48 +1212,171 @@ export default function nativeFilePlugin(
               const relativePath = literalNode.value as string;
 
               // Check if this file should be processed (either .node or package-specific)
-              if (!shouldProcessFile(relativePath, id)) return;
+              // Only process relative paths with .node extension here
+              // Non-relative paths will be handled by Pattern 7
+              if (shouldProcessFile(relativePath, id)) {
+                const absolutePath = path.resolve(path.dirname(id), relativePath);
 
-              // Resolve the actual path
-              const absolutePath = path.resolve(path.dirname(id), relativePath);
+                if (fs.existsSync(absolutePath)) {
+                  const info = registerNativeFile(absolutePath);
+                  replacements.push({
+                    start: literalNode.start,
+                    end: literalNode.end,
+                    value: `"./${info.hashedFilename}"`,
+                  });
+                  modified = true;
+                }
+              }
+            }
 
-              if (!fs.existsSync(absolutePath)) return;
+            // Pattern 6 & 6b: NAPI-RS style path.join/__dirname patterns
+            // Pattern 6: path.join(__dirname, 'xxx.node') or pathAlias.join(__dirname, 'xxx.node')
+            // Pattern 6b: join(__dirname, 'xxx.node') (destructured)
+            // Used by NAPI-RS loaders like libsql-js: existsSync(join(__dirname, 'libsql.darwin-arm64.node'))
+            const isPathJoinCall =
+              (isMemberExpression(calleeNode) &&
+                isIdentifier(calleeNode.object) &&
+                (pathModuleVars.has(calleeNode.object.name) ||
+                  calleeNode.object.name === "path") &&
+                isIdentifier(calleeNode.property) &&
+                (calleeNode.property.name === "join" ||
+                  calleeNode.property.name === "resolve")) ||
+              (isIdentifier(calleeNode) && calleeNode.name === "join");
 
-              // Check if we already processed this file
-              let info = nativeFiles.get(absolutePath);
+            if (isPathJoinCall && node.arguments.length >= 2) {
+              // Resolve base directory from first argument
+              const firstArg = node.arguments[0];
+              let baseDir: string | null = null;
 
-              if (!info) {
-                // Generate hash and store
-                const content = fs.readFileSync(absolutePath);
-                const hash = crypto
-                  .createHash("md5")
-                  .update(content)
-                  .digest("hex")
-                  .slice(0, 8);
-
-                // Generate hashed filename
-                // e.g., addon.node -> addon-HASH.node (or HASH.node if hash-only)
-                //       native-file.node-macos -> native-file-HASH.node-macos (or HASH.node-macos if hash-only)
-                const filename = path.basename(relativePath);
-                const hashedFilename = generateHashedFilename(filename, hash);
-
-                info = {
-                  content,
-                  hashedFilename,
-                  originalPath: absolutePath,
-                };
-                nativeFiles.set(absolutePath, info);
-                // Track reverse mapping for resolveId hook
-                hashedFilenameToPath.set(hashedFilename, absolutePath);
+              if (isIdentifier(firstArg) && firstArg.name === "__dirname") {
+                baseDir = path.dirname(id);
+              } else if (
+                isIdentifier(firstArg) &&
+                directoryVars.has(firstArg.name)
+              ) {
+                baseDir = directoryVars.get(firstArg.name)!;
               }
 
-              // Record the replacement
-              replacements.push({
-                start: literalNode.start,
-                end: literalNode.end,
-                value: `"./${info.hashedFilename}"`,
-              });
-              modified = true;
+              if (baseDir) {
+                // Check if last argument is a .node file string literal
+                const lastArg = node.arguments[node.arguments.length - 1];
+                if (
+                  isLiteral(lastArg) &&
+                  typeof lastArg.value === "string" &&
+                  lastArg.value.endsWith(".node")
+                ) {
+                  // Resolve the full path from all arguments
+                  const parts: string[] = [baseDir];
+                  for (let i = 1; i < node.arguments.length; i++) {
+                    const arg = node.arguments[i];
+                    if (isLiteral(arg) && typeof arg.value === "string") {
+                      parts.push(arg.value);
+                    }
+                  }
+                  const absolutePath = path.join(...parts);
+
+                  if (fs.existsSync(absolutePath)) {
+                    const info = registerNativeFile(absolutePath);
+                    replacements.push({
+                      start: lastArg.start,
+                      end: lastArg.end,
+                      value: `'${info.hashedFilename}'`,
+                    });
+                    modified = true;
+                  }
+                }
+              }
+            }
+
+            // Pattern 7: npm package require that resolves to a .node file
+            // Handles: require('@libsql/darwin-arm64') or require('native-addon')
+            // where the package's main entry is a .node file
+            if (
+              isIdentifier(calleeNode) &&
+              (calleeNode.name === "require" ||
+                customRequireVars.has(calleeNode.name)) &&
+              node.arguments.length === 1 &&
+              isLiteral(node.arguments[0]) &&
+              typeof node.arguments[0].value === "string"
+            ) {
+              const packageName = node.arguments[0].value as string;
+
+              // Skip relative paths (already handled by Pattern 5)
+              // Skip Node.js built-ins
+              if (
+                !packageName.startsWith(".") &&
+                !packageName.startsWith("/") &&
+                !packageName.startsWith("node:")
+              ) {
+                // Try to resolve the package and find a .node file
+                const nodeFilePath = resolveNpmPackageNodeFile(
+                  packageName,
+                  path.dirname(id)
+                );
+
+                if (nodeFilePath) {
+                  const info = registerNativeFile(nodeFilePath);
+                  const literalNode = node.arguments[0] as LiteralNode;
+                  replacements.push({
+                    start: literalNode.start,
+                    end: literalNode.end,
+                    value: `"./${info.hashedFilename}"`,
+                  });
+                  modified = true;
+                }
+              }
+            }
+
+            // Pattern 8: Template literal require with platform-specific packages
+            // Handles: require(`@libsql/${target}`) or require(`@scope/${variable}`)
+            // where the package name is dynamically constructed but follows platform patterns
+            if (
+              isIdentifier(calleeNode) &&
+              (calleeNode.name === "require" ||
+                customRequireVars.has(calleeNode.name)) &&
+              node.arguments.length === 1 &&
+              node.arguments[0].type === "TemplateLiteral"
+            ) {
+              const templateLiteral = node.arguments[0] as BaseASTNode & {
+                quasis: Array<{ value: { raw: string; cooked: string } }>;
+                expressions: BaseASTNode[];
+              };
+
+              // Check if this is a simple template like `@scope/${expr}`
+              // We need at least one quasi (the prefix) and exactly one expression
+              if (
+                templateLiteral.quasis.length >= 1 &&
+                templateLiteral.expressions.length >= 1
+              ) {
+                const prefix = templateLiteral.quasis[0].value.cooked;
+
+                // Check if the prefix looks like a scoped package pattern
+                // e.g., "@libsql/", "@scope/prefix-"
+                if (prefix && prefix.startsWith("@") && prefix.includes("/")) {
+                  // Try to find a matching platform-specific package
+                  const result = findPlatformSpecificNativePackage(
+                    prefix,
+                    path.dirname(id)
+                  );
+
+                  if (result) {
+                    const { nodeFilePath } = result;
+                    const info = registerNativeFile(nodeFilePath);
+                    const templateNode = node.arguments[0];
+                    if (
+                      templateNode.start !== undefined &&
+                      templateNode.end !== undefined
+                    ) {
+                      replacements.push({
+                        start: templateNode.start,
+                        end: templateNode.end,
+                        value: `"./${info.hashedFilename}"`,
+                      });
+                      modified = true;
+                    }
+                  }
+                }
+              }
             }
           }
 
@@ -1246,30 +1510,7 @@ export default function nativeFilePlugin(
           nodeFilePath: string,
           callNode: CallExpressionNode
         ): void {
-          // Check if we already processed this file
-          let info = nativeFiles.get(nodeFilePath);
-
-          if (!info) {
-            // Generate hash and store
-            const content = fs.readFileSync(nodeFilePath);
-            const hash = crypto
-              .createHash("md5")
-              .update(content)
-              .digest("hex")
-              .slice(0, 8);
-
-            const filename = path.basename(nodeFilePath);
-            const hashedFilename = generateHashedFilename(filename, hash);
-
-            info = {
-              content,
-              hashedFilename,
-              originalPath: nodeFilePath,
-            };
-            nativeFiles.set(nodeFilePath, info);
-            // Track reverse mapping for resolveId hook
-            hashedFilenameToPath.set(hashedFilename, nodeFilePath);
-          }
+          const info = registerNativeFile(nodeFilePath);
 
           // Determine how to generate the replacement code
           let replacementCode: string;

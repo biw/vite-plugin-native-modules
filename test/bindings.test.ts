@@ -656,7 +656,9 @@ module.exports = load('binding');`;
       );
 
       expect(resolveResult).toBeDefined();
-      expect(resolveResult).toMatch(/^\0native:/);
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const resolvedId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
+      expect(resolvedId).toMatch(/^\0native:/);
     });
 
     it("should resolve hashed filenames with query parameters", async () => {
@@ -692,7 +694,9 @@ module.exports = load('binding');`;
       );
 
       expect(resolveResult).toBeDefined();
-      expect(resolveResult).toMatch(/^\0native:/);
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const resolvedId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
+      expect(resolvedId).toMatch(/^\0native:/);
     });
 
     it("should resolve hash-only format filenames", async () => {
@@ -734,7 +738,9 @@ module.exports = load('binding');`;
       );
 
       expect(resolveResult).toBeDefined();
-      expect(resolveResult).toMatch(/^\0native:/);
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const resolvedId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
+      expect(resolvedId).toMatch(/^\0native:/);
     });
 
     it("should resolve node-gyp-build transformed paths", async () => {
@@ -777,7 +783,9 @@ module.exports = load('binding');`;
       );
 
       expect(resolveResult).toBeDefined();
-      expect(resolveResult).toMatch(/^\0native:/);
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const resolvedId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
+      expect(resolvedId).toMatch(/^\0native:/);
     });
   });
 
@@ -862,13 +870,15 @@ module.exports = { addon };`;
       if (!match) return;
       const hashedFilename = match[1];
 
-      const virtualId = await (plugin.resolveId as any).call(
+      const resolveResult = await (plugin.resolveId as any).call(
         {} as any,
         `./${hashedFilename}`,
         cjsFilePath,
         {}
       );
 
+      // resolveId now returns an object with { id, syntheticNamedExports }
+      const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
       expect(loadResult).toContain("module.exports");
