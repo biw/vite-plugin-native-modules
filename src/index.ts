@@ -567,22 +567,28 @@ export default function nativeFilePlugin(
 
       // Return proxy code that requires the hashed file
       // The hashed file will be in the same directory as the output bundle
+      //
+      // IMPORTANT: Rollup's getAugmentedNamespace has special handling when the default
+      // export is a function - it creates a callable wrapper that also has all the
+      // original object's properties. We exploit this by exporting a function that
+      // has all the native module properties attached to it. This way:
+      //
+      // 1. Rollup creates namespace: { default: ourFunction }
+      // 2. getAugmentedNamespace sees default is a function
+      // 3. It creates a callable wrapper with all properties from ourFunction
+      // 4. Code can destructure databaseOpen, etc. from the result
+      //
+      // We also set __esModule on the function to potentially short-circuit even earlier.
       if (isESModule) {
-        // ES module syntax - use createRequire to load the native module
-        // and export it in a way that preserves its properties for destructuring.
-        //
-        // IMPORTANT: We add __esModule marker to prevent Rollup's getAugmentedNamespace
-        // from wrapping this in an empty object. The getAugmentedNamespace helper has
-        // a bug where if `default` is not a function, it creates an empty object and
-        // only copies keys from the namespace (which only has 'default'), NOT from
-        // the default export itself. By setting __esModule = true on the export,
-        // getAugmentedNamespace returns the object as-is.
         return `
           import { createRequire } from 'node:module';
           const createRequireLocal = createRequire(import.meta.url);
           const nativeExports = createRequireLocal('./${info.hashedFilename}');
-          nativeExports.__esModule = true;
-          export default nativeExports;
+          const wrapper = function() { return nativeExports; };
+          Object.assign(wrapper, nativeExports);
+          wrapper.__esModule = true;
+          wrapper.default = nativeExports;
+          export default wrapper;
         `;
       } else {
         // CommonJS syntax - use require directly
