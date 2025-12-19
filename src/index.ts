@@ -494,11 +494,11 @@ export default function nativeFilePlugin(
   // For paths like /node_modules/sql/native.node -> sql
   function extractPackageName(filePath: string): string | null {
     const nodeModulesMatch = filePath.match(
-      /node_modules[\/\\](@[^\/\\]+[\/\\][^\/\\]+|[^\/\\]+)/
+      /node_modules[/\\](@[^/\\]+[/\\][^/\\]+|[^/\\]+)/
     );
     if (nodeModulesMatch) {
       // Convert to file-safe format: @scope/package -> scope-package (remove @ and replace slashes)
-      return nodeModulesMatch[1].replace(/^@/, "").replace(/[\/\\]/g, "-");
+      return nodeModulesMatch[1].replace(/^@/, "").replace(/[/\\]/g, "-");
     }
     return null;
   }
