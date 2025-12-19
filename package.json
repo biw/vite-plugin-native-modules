@@ -1,6 +1,6 @@
 {
   "name": "vite-plugin-native-modules",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "A Vite plugin for integrating Node.js native modules into your Vite project",
   "author": "Ben Williams",
   "license": "MIT",
