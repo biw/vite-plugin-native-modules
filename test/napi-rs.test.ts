@@ -598,4 +598,124 @@ describe("NAPI-RS Support", () => {
       }
     });
   });
+
+  describe("Template literal require patterns (Pattern 8)", () => {
+    it("should handle template literal require with scoped packages", () => {
+      const plugin = nativeFilePlugin() as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      // Create a scoped package with a .node file for current platform
+      const nodeModulesDir = path.join(tempDir, "node_modules");
+      const scopeDir = path.join(nodeModulesDir, "@libsql");
+      const packageDir = path.join(scopeDir, `${platform}-${arch}`);
+      fs.mkdirSync(packageDir, { recursive: true });
+
+      // Create index.node file
+      const nodeFilePath = path.join(packageDir, "index.node");
+      fs.writeFileSync(nodeFilePath, Buffer.from("platform native binding"));
+
+      // Create package.json with main pointing to index.node
+      fs.writeFileSync(
+        path.join(packageDir, "package.json"),
+        JSON.stringify({
+          name: `@libsql/${platform}-${arch}`,
+          main: "index.node",
+        })
+      );
+
+      // Code uses template literal require like real libsql does
+      const jsFilePath = path.join(tempDir, "index.js");
+      const code = `
+        const { currentTarget } = require('@neon-rs/load');
+        let target = currentTarget();
+        const binding = require(\`@libsql/\${target}\`);
+        module.exports = binding;
+      `;
+
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, jsFilePath);
+
+      expect(result).toBeDefined();
+      expect(result.code).toBeDefined();
+
+      // Should have transformed the template literal to a hashed path
+      expect(result.code).toMatch(/[A-F0-9]{8}\.node/);
+
+      // Original template literal should be replaced
+      expect(result.code).not.toContain("`@libsql/");
+    });
+
+    it("should find platform package by scanning scope directory", () => {
+      const plugin = nativeFilePlugin() as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      // Create a package with slightly different naming convention
+      const nodeModulesDir = path.join(tempDir, "node_modules");
+      const scopeDir = path.join(nodeModulesDir, "@nativelib");
+      // Use platform name in a different format (matches platform scanning logic)
+      const packageDir = path.join(scopeDir, `${platform}-${arch}-binding`);
+      fs.mkdirSync(packageDir, { recursive: true });
+
+      // Create native.node file
+      const nodeFilePath = path.join(packageDir, "native.node");
+      fs.writeFileSync(nodeFilePath, Buffer.from("native binding content"));
+
+      fs.writeFileSync(
+        path.join(packageDir, "package.json"),
+        JSON.stringify({
+          name: `@nativelib/${platform}-${arch}-binding`,
+          main: "native.node",
+        })
+      );
+
+      const jsFilePath = path.join(tempDir, "index.js");
+      const code = `
+        const lib = require(\`@nativelib/\${process.platform}-\${process.arch}-binding\`);
+        module.exports = lib;
+      `;
+
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, jsFilePath);
+
+      expect(result).toBeDefined();
+      expect(result.code).toBeDefined();
+
+      // Should have transformed the template literal
+      expect(result.code).toMatch(/[A-F0-9]{8}\.node/);
+    });
+
+    it("should NOT transform template literals that don't match platform packages", () => {
+      const plugin = nativeFilePlugin() as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      // Don't create any platform packages
+
+      const jsFilePath = path.join(tempDir, "index.js");
+      const code = `
+        const config = require(\`@myapp/\${env}\`);
+        module.exports = config;
+      `;
+
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, jsFilePath);
+
+      // Should not transform (no matching packages)
+      if (result) {
+        expect(result.code).toContain("`@myapp/");
+        expect(result.code).not.toMatch(/[A-F0-9]{8}\.node/);
+      }
+    });
+  });
 });

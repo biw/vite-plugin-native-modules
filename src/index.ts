@@ -412,6 +412,83 @@ export default function nativeFilePlugin(
     return null;
   }
 
+  // Helper function to find platform-specific native packages matching a scope pattern
+  // Used for template literal requires like require(`@libsql/${target}`)
+  // Returns the path to the .node file for the current platform, or null
+  function findPlatformSpecificNativePackage(
+    scopePrefix: string, // e.g., "@libsql/" or "@scope/prefix-"
+    fromDir: string
+  ): { packageName: string; nodeFilePath: string } | null {
+    // Common platform/arch combinations for native modules
+    const platform = process.platform;
+    const arch = process.arch;
+
+    // Common naming patterns for platform-specific packages
+    const platformPatterns = [
+      `${platform}-${arch}`, // darwin-arm64, linux-x64
+      `${platform}-${arch}-gnu`, // linux-x64-gnu
+      `${platform}-${arch}-musl`, // linux-x64-musl
+      `${platform}${arch === "x64" ? "64" : arch === "ia32" ? "32" : arch}`, // darwin64, linux64
+    ];
+
+    // Walk up directories looking for node_modules
+    let currentDir = fromDir;
+    const root = path.parse(fromDir).root;
+
+    while (currentDir !== root && currentDir !== path.dirname(currentDir)) {
+      const nodeModulesDir = path.join(currentDir, "node_modules");
+
+      if (fs.existsSync(nodeModulesDir)) {
+        // Try each platform pattern
+        for (const platformPattern of platformPatterns) {
+          const packageName = `${scopePrefix}${platformPattern}`;
+          const result = resolveNpmPackageNodeFile(packageName, currentDir);
+          if (result) {
+            return { packageName, nodeFilePath: result };
+          }
+        }
+
+        // If scope prefix starts with @, also try scanning the scope directory
+        if (scopePrefix.startsWith("@")) {
+          const scopeName = scopePrefix.split("/")[0]; // @libsql
+          const scopeDir = path.join(nodeModulesDir, scopeName);
+
+          if (fs.existsSync(scopeDir)) {
+            try {
+              const packages = fs.readdirSync(scopeDir);
+              for (const pkg of packages) {
+                // Check if this package matches current platform
+                const lowerPkg = pkg.toLowerCase();
+                const lowerPlatform = platform.toLowerCase();
+                const lowerArch = arch.toLowerCase();
+
+                if (
+                  lowerPkg.includes(lowerPlatform) &&
+                  lowerPkg.includes(lowerArch)
+                ) {
+                  const packageName = `${scopeName}/${pkg}`;
+                  const result = resolveNpmPackageNodeFile(
+                    packageName,
+                    currentDir
+                  );
+                  if (result) {
+                    return { packageName, nodeFilePath: result };
+                  }
+                }
+              }
+            } catch {
+              // Ignore read errors
+            }
+          }
+        }
+      }
+
+      currentDir = path.dirname(currentDir);
+    }
+
+    return null;
+  }
+
   // Helper function to generate hashed filename based on format option
   function generateHashedFilename(
     originalFilename: string,
@@ -619,7 +696,7 @@ export default function nativeFilePlugin(
 
       if (!enabled) return null;
 
-      // Only process files that mention .node, node-gyp-build, or bindings
+      // Only process files that mention .node, node-gyp-build, bindings, or native platform packages
       // For bindings, we check for the exact package name patterns to avoid false positives
       const hasBindingsPackage =
         code.includes("require('bindings')") ||
@@ -627,10 +704,17 @@ export default function nativeFilePlugin(
         code.includes("from 'bindings'") ||
         code.includes('from "bindings"');
 
+      // Check for template literal requires that might be platform-specific native packages
+      // These patterns are used by NAPI-RS/neon-rs for platform-specific native modules
+      // e.g., require(`@libsql/${target}`) or require(`@scope/${platform}`)
+      const hasTemplateLiteralNativePackage =
+        /require\s*\(\s*`@[a-z0-9-]+\//.test(code);
+
       if (
         !code.includes(".node") &&
         !code.includes("node-gyp-build") &&
-        !hasBindingsPackage
+        !hasBindingsPackage &&
+        !hasTemplateLiteralNativePackage
       )
         return null;
 
@@ -1409,6 +1493,86 @@ export default function nativeFilePlugin(
                     value: `"./${info.hashedFilename}"`,
                   });
                   modified = true;
+                }
+              }
+            }
+
+            // Pattern 8: Template literal require with platform-specific packages
+            // Handles: require(`@libsql/${target}`) or require(`@scope/${variable}`)
+            // where the package name is dynamically constructed but follows platform patterns
+            if (
+              isIdentifier(calleeNode) &&
+              (calleeNode.name === "require" ||
+                customRequireVars.has(calleeNode.name)) &&
+              node.arguments.length === 1 &&
+              node.arguments[0].type === "TemplateLiteral"
+            ) {
+              const templateLiteral = node.arguments[0] as BaseASTNode & {
+                quasis: Array<{ value: { raw: string; cooked: string } }>;
+                expressions: BaseASTNode[];
+              };
+
+              // Check if this is a simple template like `@scope/${expr}`
+              // We need at least one quasi (the prefix) and exactly one expression
+              if (
+                templateLiteral.quasis.length >= 1 &&
+                templateLiteral.expressions.length >= 1
+              ) {
+                const prefix = templateLiteral.quasis[0].value.cooked;
+
+                // Check if the prefix looks like a scoped package pattern
+                // e.g., "@libsql/", "@scope/prefix-"
+                if (prefix && prefix.startsWith("@") && prefix.includes("/")) {
+                  // Try to find a matching platform-specific package
+                  const result = findPlatformSpecificNativePackage(
+                    prefix,
+                    path.dirname(id)
+                  );
+
+                  if (result) {
+                    const { nodeFilePath } = result;
+
+                    // Check if we already processed this file
+                    let info = nativeFiles.get(nodeFilePath);
+
+                    if (!info) {
+                      // Generate hash and store
+                      const content = fs.readFileSync(nodeFilePath);
+                      const hash = crypto
+                        .createHash("md5")
+                        .update(content)
+                        .digest("hex")
+                        .slice(0, 8);
+
+                      const filename = path.basename(nodeFilePath);
+                      const hashedFilename = generateHashedFilename(
+                        filename,
+                        hash
+                      );
+
+                      info = {
+                        content,
+                        hashedFilename,
+                        originalPath: nodeFilePath,
+                      };
+                      nativeFiles.set(nodeFilePath, info);
+                      hashedFilenameToPath.set(hashedFilename, nodeFilePath);
+                    }
+
+                    // Replace the entire template literal with the resolved path
+                    const templateNode = node.arguments[0];
+                    if (
+                      templateNode.start !== undefined &&
+                      templateNode.end !== undefined
+                    ) {
+                      replacements.push({
+                        start: templateNode.start,
+                        end: templateNode.end,
+                        value: `"./${info.hashedFilename}"`,
+                      });
+                      modified = true;
+                    }
+                  }
                 }
               }
             }
