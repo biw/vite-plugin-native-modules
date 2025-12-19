@@ -568,14 +568,24 @@ export default function nativeFilePlugin(
       // Return proxy code that requires the hashed file
       // The hashed file will be in the same directory as the output bundle
       if (isESModule) {
-        // ES module syntax
+        // ES module syntax - use createRequire to load the native module
+        // and export it in a way that preserves its properties for destructuring.
+        //
+        // IMPORTANT: We add __esModule marker to prevent Rollup's getAugmentedNamespace
+        // from wrapping this in an empty object. The getAugmentedNamespace helper has
+        // a bug where if `default` is not a function, it creates an empty object and
+        // only copies keys from the namespace (which only has 'default'), NOT from
+        // the default export itself. By setting __esModule = true on the export,
+        // getAugmentedNamespace returns the object as-is.
         return `
           import { createRequire } from 'node:module';
           const createRequireLocal = createRequire(import.meta.url);
-          export default createRequireLocal('./${info.hashedFilename}');
+          const nativeExports = createRequireLocal('./${info.hashedFilename}');
+          nativeExports.__esModule = true;
+          export default nativeExports;
         `;
       } else {
-        // CommonJS syntax - use require directly since we're in CommonJS context
+        // CommonJS syntax - use require directly
         return `
           module.exports = require('./${info.hashedFilename}');
         `;
