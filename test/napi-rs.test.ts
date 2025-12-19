@@ -279,7 +279,11 @@ describe("NAPI-RS Support", () => {
         Buffer.from("current platform binding")
       );
 
-      // Code references multiple platforms but only current exists
+      // Also create a file for a different platform that should NOT be processed
+      const otherPlatformFile = "libsql.other-platform.node";
+      // Don't create this file - it shouldn't exist
+
+      // Code references current platform (which exists) and other platform (which doesn't)
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `
         const { existsSync } = require('fs');
@@ -287,22 +291,13 @@ describe("NAPI-RS Support", () => {
 
         let nativeBinding;
 
-        switch (process.platform) {
-          case 'darwin':
-            if (existsSync(join(__dirname, 'libsql.darwin-arm64.node'))) {
-              nativeBinding = require('./libsql.darwin-arm64.node');
-            }
-            break;
-          case 'linux':
-            if (existsSync(join(__dirname, 'libsql.linux-x64-gnu.node'))) {
-              nativeBinding = require('./libsql.linux-x64-gnu.node');
-            }
-            break;
-          case 'win32':
-            if (existsSync(join(__dirname, 'libsql.win32-x64-msvc.node'))) {
-              nativeBinding = require('./libsql.win32-x64-msvc.node');
-            }
-            break;
+        // Current platform - file exists
+        if (existsSync(join(__dirname, '${currentPlatformFile}'))) {
+          nativeBinding = require('./${currentPlatformFile}');
+        }
+        // Other platform - file does NOT exist
+        else if (existsSync(join(__dirname, '${otherPlatformFile}'))) {
+          nativeBinding = require('./${otherPlatformFile}');
         }
 
         module.exports = nativeBinding;
@@ -312,15 +307,18 @@ describe("NAPI-RS Support", () => {
       const result = (plugin.transform as any).call(context, code, jsFilePath);
 
       expect(result).toBeDefined();
+      expect(result.code).toBeDefined();
 
       // Only the current platform's file should be hashed (it exists)
       // Other platforms' files should remain unchanged (they don't exist)
       const hashedPattern = /[A-F0-9]{8}\.node/g;
       const hashedMatches = result.code.match(hashedPattern) || [];
 
-      // Should only have hashed references for the file that exists
-      // The exact count depends on how many times the current platform file is referenced
-      expect(hashedMatches.length).toBeGreaterThan(0);
+      // Should have hashed references for the file that exists (appears twice in code)
+      expect(hashedMatches.length).toBe(2);
+
+      // The other platform file should remain unchanged (not hashed)
+      expect(result.code).toContain(otherPlatformFile);
     });
   });
 
