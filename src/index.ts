@@ -489,26 +489,47 @@ export default function nativeFilePlugin(
     return null;
   }
 
+  // Helper function to extract package name from a file path
+  // For paths like /node_modules/@libsql/darwin-arm64/index.node -> @libsql-darwin-arm64
+  // For paths like /node_modules/sql/native.node -> sql
+  function extractPackageName(filePath: string): string | null {
+    const nodeModulesMatch = filePath.match(
+      /node_modules[\/\\](@[^\/\\]+[\/\\][^\/\\]+|[^\/\\]+)/
+    );
+    if (nodeModulesMatch) {
+      // Convert to file-safe format: @scope/package -> @scope-package
+      return nodeModulesMatch[1].replace(/[\/\\]/g, "-");
+    }
+    return null;
+  }
+
   // Helper function to generate hashed filename based on format option
+  // originalPath is optional - when provided, we can extract package name for prefix
   function generateHashedFilename(
     originalFilename: string,
-    hash: string
+    hash: string,
+    originalPath?: string
   ): string {
     const lastDotIndex = originalFilename.lastIndexOf(".");
     const extension =
       lastDotIndex > 0 ? originalFilename.slice(lastDotIndex) : "";
+    const baseName =
+      lastDotIndex > 0 ? originalFilename.slice(0, lastDotIndex) : originalFilename;
 
     if (options.filenameFormat === "hash-only") {
       // Hash-only format: HASH.node
       return `${hash.toUpperCase()}${extension}`;
     } else {
-      // Preserve format (default): filename-HASH.node
-      return lastDotIndex > 0
-        ? `${originalFilename.slice(
-            0,
-            lastDotIndex
-          )}-${hash.toUpperCase()}${extension}`
-        : `${originalFilename}-${hash.toUpperCase()}`;
+      // Preserve format (default): packagename-filename-HASH.node
+      // Extract package name if we have the original path
+      let prefix = "";
+      if (originalPath) {
+        const packageName = extractPackageName(originalPath);
+        if (packageName) {
+          prefix = `${packageName}-`;
+        }
+      }
+      return `${prefix}${baseName}-${hash.toUpperCase()}${extension}`;
     }
   }
 
@@ -568,30 +589,18 @@ export default function nativeFilePlugin(
       // Return proxy code that requires the hashed file
       // The hashed file will be in the same directory as the output bundle
       //
-      // IMPORTANT: Rollup's getAugmentedNamespace has special handling when the default
-      // export is a function - it creates a callable wrapper that also has all the
-      // original object's properties. We exploit this by exporting a function that
-      // has all the native module properties attached to it. This way:
-      //
-      // 1. Rollup creates namespace: { default: ourFunction }
-      // 2. getAugmentedNamespace sees default is a function
-      // 3. It creates a callable wrapper with all properties from ourFunction
-      // 4. Code can destructure databaseOpen, etc. from the result
-      //
-      // We also set __esModule on the function to potentially short-circuit even earlier.
+      // We use syntheticNamedExports (set in resolveId) to tell Rollup to resolve
+      // any named export requests from the default export's properties.
+      // This way, `const { databaseOpen } = require(...)` works correctly
+      // because Rollup gets databaseOpen from default.databaseOpen.
       if (isESModule) {
         return `
           import { createRequire } from 'node:module';
           const createRequireLocal = createRequire(import.meta.url);
-          const nativeExports = createRequireLocal('./${info.hashedFilename}');
-          const wrapper = function() { return nativeExports; };
-          Object.assign(wrapper, nativeExports);
-          wrapper.__esModule = true;
-          wrapper.default = nativeExports;
-          export default wrapper;
+          const nativeModule = createRequireLocal('./${info.hashedFilename}');
+          export default nativeModule;
         `;
       } else {
-        // CommonJS syntax - use require directly
         return `
           module.exports = require('./${info.hashedFilename}');
         `;
@@ -643,8 +652,14 @@ export default function nativeFilePlugin(
         const virtualId = `\0native:${originalPath}`;
         // Always track module type for this virtual module (even if false/CommonJS)
         virtualModuleTypes.set(virtualId, importingModuleType);
-        // Return virtual module ID so load hook can handle it
-        return virtualId;
+        // Return virtual module ID with syntheticNamedExports enabled
+        // This tells Rollup to resolve named exports from the default export's properties,
+        // which fixes the getAugmentedNamespace issue where destructuring fails
+        // because properties like databaseOpen aren't copied to the namespace.
+        return {
+          id: virtualId,
+          syntheticNamedExports: true,
+        };
       }
 
       // Check if this file should be processed
@@ -666,7 +681,7 @@ export default function nativeFilePlugin(
 
       // Generate hashed filename
       const filename = path.basename(source);
-      const hashedFilename = generateHashedFilename(filename, hash);
+      const hashedFilename = generateHashedFilename(filename, hash, resolved);
 
       // Store the mapping
       nativeFiles.set(resolved, {
@@ -1259,7 +1274,7 @@ export default function nativeFilePlugin(
                     // e.g., addon.node -> addon-HASH.node (or HASH.node if hash-only)
                     //       native-file.node-macos -> native-file-HASH.node-macos (or HASH.node-macos if hash-only)
                     const filename = path.basename(relativePath);
-                    const hashedFilename = generateHashedFilename(filename, hash);
+                    const hashedFilename = generateHashedFilename(filename, hash, absolutePath);
 
                     info = {
                       content,
@@ -1344,7 +1359,8 @@ export default function nativeFilePlugin(
 
                       const hashedFilename = generateHashedFilename(
                         nodeFileName,
-                        hash
+                        hash,
+                        absolutePath
                       );
 
                       info = {
@@ -1423,7 +1439,8 @@ export default function nativeFilePlugin(
 
                       const hashedFilename = generateHashedFilename(
                         nodeFileName,
-                        hash
+                        hash,
+                        absolutePath
                       );
 
                       info = {
@@ -1489,7 +1506,8 @@ export default function nativeFilePlugin(
                     const filename = path.basename(nodeFilePath);
                     const hashedFilename = generateHashedFilename(
                       filename,
-                      hash
+                      hash,
+                      nodeFilePath
                     );
 
                     info = {
@@ -1563,7 +1581,8 @@ export default function nativeFilePlugin(
                       const filename = path.basename(nodeFilePath);
                       const hashedFilename = generateHashedFilename(
                         filename,
-                        hash
+                        hash,
+                        nodeFilePath
                       );
 
                       info = {
@@ -1737,7 +1756,7 @@ export default function nativeFilePlugin(
               .slice(0, 8);
 
             const filename = path.basename(nodeFilePath);
-            const hashedFilename = generateHashedFilename(filename, hash);
+            const hashedFilename = generateHashedFilename(filename, hash, nodeFilePath);
 
             info = {
               content,
