@@ -490,15 +490,15 @@ export default function nativeFilePlugin(
   }
 
   // Helper function to extract package name from a file path
-  // For paths like /node_modules/@libsql/darwin-arm64/index.node -> @libsql-darwin-arm64
+  // For paths like /node_modules/@libsql/darwin-arm64/index.node -> libsql-darwin-arm64
   // For paths like /node_modules/sql/native.node -> sql
   function extractPackageName(filePath: string): string | null {
     const nodeModulesMatch = filePath.match(
       /node_modules[\/\\](@[^\/\\]+[\/\\][^\/\\]+|[^\/\\]+)/
     );
     if (nodeModulesMatch) {
-      // Convert to file-safe format: @scope/package -> @scope-package
-      return nodeModulesMatch[1].replace(/[\/\\]/g, "-");
+      // Convert to file-safe format: @scope/package -> scope-package (remove @ and replace slashes)
+      return nodeModulesMatch[1].replace(/^@/, "").replace(/[\/\\]/g, "-");
     }
     return null;
   }
