@@ -348,6 +348,70 @@ export default function nativeFilePlugin(
     return null;
   }
 
+  // Helper function to resolve an npm package and find a .node file
+  // Returns the path to the .node file if found, null otherwise
+  function resolveNpmPackageNodeFile(
+    packageName: string,
+    fromDir: string
+  ): string | null {
+    // Walk up directories looking for node_modules
+    let currentDir = fromDir;
+    const root = path.parse(fromDir).root;
+
+    while (currentDir !== root && currentDir !== path.dirname(currentDir)) {
+      const nodeModulesDir = path.join(currentDir, "node_modules");
+
+      if (fs.existsSync(nodeModulesDir)) {
+        // Handle scoped packages (@scope/name) and regular packages
+        const packageDir = path.join(nodeModulesDir, packageName);
+
+        if (fs.existsSync(packageDir)) {
+          // Try to read package.json to find the main entry
+          const packageJsonPath = path.join(packageDir, "package.json");
+
+          if (fs.existsSync(packageJsonPath)) {
+            try {
+              const packageJson = JSON.parse(
+                fs.readFileSync(packageJsonPath, "utf-8")
+              );
+
+              // Check if main points to a .node file
+              if (packageJson.main && packageJson.main.endsWith(".node")) {
+                const mainPath = path.join(packageDir, packageJson.main);
+                if (fs.existsSync(mainPath)) {
+                  return mainPath;
+                }
+              }
+            } catch {
+              // Ignore JSON parse errors
+            }
+          }
+
+          // Check for index.node as fallback
+          const indexNodePath = path.join(packageDir, "index.node");
+          if (fs.existsSync(indexNodePath)) {
+            return indexNodePath;
+          }
+
+          // Check for any .node file directly in the package directory
+          try {
+            const files = fs.readdirSync(packageDir);
+            const nodeFile = files.find((f) => f.endsWith(".node"));
+            if (nodeFile) {
+              return path.join(packageDir, nodeFile);
+            }
+          } catch {
+            // Ignore read errors
+          }
+        }
+      }
+
+      currentDir = path.dirname(currentDir);
+    }
+
+    return null;
+  }
+
   // Helper function to generate hashed filename based on format option
   function generateHashedFilename(
     originalFilename: string,
@@ -1062,6 +1126,7 @@ export default function nativeFilePlugin(
               }
             }
             // Pattern 5: Regular require('./addon.node') calls
+            // Note: Using nested if instead of early return to allow Pattern 7 to run
             else if (
               node.arguments.length === 1 &&
               isLiteral(node.arguments[0]) &&
@@ -1071,48 +1136,281 @@ export default function nativeFilePlugin(
               const relativePath = literalNode.value as string;
 
               // Check if this file should be processed (either .node or package-specific)
-              if (!shouldProcessFile(relativePath, id)) return;
+              // Only process relative paths with .node extension here
+              // Non-relative paths will be handled by Pattern 7
+              if (shouldProcessFile(relativePath, id)) {
+                // Resolve the actual path
+                const absolutePath = path.resolve(path.dirname(id), relativePath);
 
-              // Resolve the actual path
-              const absolutePath = path.resolve(path.dirname(id), relativePath);
+                if (fs.existsSync(absolutePath)) {
+                  // Check if we already processed this file
+                  let info = nativeFiles.get(absolutePath);
 
-              if (!fs.existsSync(absolutePath)) return;
+                  if (!info) {
+                    // Generate hash and store
+                    const content = fs.readFileSync(absolutePath);
+                    const hash = crypto
+                      .createHash("md5")
+                      .update(content)
+                      .digest("hex")
+                      .slice(0, 8);
 
-              // Check if we already processed this file
-              let info = nativeFiles.get(absolutePath);
+                    // Generate hashed filename
+                    // e.g., addon.node -> addon-HASH.node (or HASH.node if hash-only)
+                    //       native-file.node-macos -> native-file-HASH.node-macos (or HASH.node-macos if hash-only)
+                    const filename = path.basename(relativePath);
+                    const hashedFilename = generateHashedFilename(filename, hash);
 
-              if (!info) {
-                // Generate hash and store
-                const content = fs.readFileSync(absolutePath);
-                const hash = crypto
-                  .createHash("md5")
-                  .update(content)
-                  .digest("hex")
-                  .slice(0, 8);
+                    info = {
+                      content,
+                      hashedFilename,
+                      originalPath: absolutePath,
+                    };
+                    nativeFiles.set(absolutePath, info);
+                    // Track reverse mapping for resolveId hook
+                    hashedFilenameToPath.set(hashedFilename, absolutePath);
+                  }
 
-                // Generate hashed filename
-                // e.g., addon.node -> addon-HASH.node (or HASH.node if hash-only)
-                //       native-file.node-macos -> native-file-HASH.node-macos (or HASH.node-macos if hash-only)
-                const filename = path.basename(relativePath);
-                const hashedFilename = generateHashedFilename(filename, hash);
+                  // Record the replacement
+                  replacements.push({
+                    start: literalNode.start,
+                    end: literalNode.end,
+                    value: `"./${info.hashedFilename}"`,
+                  });
+                  modified = true;
+                }
+              }
+            }
 
-                info = {
-                  content,
-                  hashedFilename,
-                  originalPath: absolutePath,
-                };
-                nativeFiles.set(absolutePath, info);
-                // Track reverse mapping for resolveId hook
-                hashedFilenameToPath.set(hashedFilename, absolutePath);
+            // Pattern 6: NAPI-RS style join(__dirname, 'xxx.node') or path.join(__dirname, 'xxx.node')
+            // This pattern is used by NAPI-RS generated loaders like libsql-js:
+            //   existsSync(join(__dirname, 'libsql.darwin-arm64.node'))
+            // We need to rewrite the string literal to use the hashed filename
+            if (
+              isMemberExpression(calleeNode) &&
+              isIdentifier(calleeNode.object) &&
+              (pathModuleVars.has(calleeNode.object.name) ||
+                calleeNode.object.name === "path") &&
+              isIdentifier(calleeNode.property) &&
+              (calleeNode.property.name === "join" ||
+                calleeNode.property.name === "resolve") &&
+              node.arguments.length >= 2
+            ) {
+              // Check if first arg is __dirname or a directory variable
+              const firstArg = node.arguments[0];
+              let baseDir: string | null = null;
+
+              if (isIdentifier(firstArg) && firstArg.name === "__dirname") {
+                baseDir = path.dirname(id);
+              } else if (
+                isIdentifier(firstArg) &&
+                directoryVars.has(firstArg.name)
+              ) {
+                baseDir = directoryVars.get(firstArg.name)!;
               }
 
-              // Record the replacement
-              replacements.push({
-                start: literalNode.start,
-                end: literalNode.end,
-                value: `"./${info.hashedFilename}"`,
-              });
-              modified = true;
+              if (baseDir) {
+                // Check if last argument is a .node file string literal
+                const lastArg = node.arguments[node.arguments.length - 1];
+                if (
+                  isLiteral(lastArg) &&
+                  typeof lastArg.value === "string" &&
+                  lastArg.value.endsWith(".node")
+                ) {
+                  const nodeFileName = lastArg.value;
+                  // Resolve the full path
+                  const parts: string[] = [baseDir];
+                  for (let i = 1; i < node.arguments.length - 1; i++) {
+                    const arg = node.arguments[i];
+                    if (isLiteral(arg) && typeof arg.value === "string") {
+                      parts.push(arg.value);
+                    }
+                  }
+                  parts.push(nodeFileName);
+                  const absolutePath = path.join(...parts);
+
+                  if (fs.existsSync(absolutePath)) {
+                    // Check if we already processed this file
+                    let info = nativeFiles.get(absolutePath);
+
+                    if (!info) {
+                      // Generate hash and store
+                      const content = fs.readFileSync(absolutePath);
+                      const hash = crypto
+                        .createHash("md5")
+                        .update(content)
+                        .digest("hex")
+                        .slice(0, 8);
+
+                      const hashedFilename = generateHashedFilename(
+                        nodeFileName,
+                        hash
+                      );
+
+                      info = {
+                        content,
+                        hashedFilename,
+                        originalPath: absolutePath,
+                      };
+                      nativeFiles.set(absolutePath, info);
+                      hashedFilenameToPath.set(hashedFilename, absolutePath);
+                    }
+
+                    // Record the replacement for the string literal
+                    replacements.push({
+                      start: lastArg.start,
+                      end: lastArg.end,
+                      value: `'${info.hashedFilename}'`,
+                    });
+                    modified = true;
+                  }
+                }
+              }
+            }
+
+            // Pattern 6b: Destructured join(__dirname, 'xxx.node') without path. prefix
+            // Handles: const { join } = require('path'); join(__dirname, 'xxx.node')
+            if (
+              isIdentifier(calleeNode) &&
+              calleeNode.name === "join" &&
+              node.arguments.length >= 2
+            ) {
+              // Check if first arg is __dirname or a directory variable
+              const firstArg = node.arguments[0];
+              let baseDir: string | null = null;
+
+              if (isIdentifier(firstArg) && firstArg.name === "__dirname") {
+                baseDir = path.dirname(id);
+              } else if (
+                isIdentifier(firstArg) &&
+                directoryVars.has(firstArg.name)
+              ) {
+                baseDir = directoryVars.get(firstArg.name)!;
+              }
+
+              if (baseDir) {
+                // Check if last argument is a .node file string literal
+                const lastArg = node.arguments[node.arguments.length - 1];
+                if (
+                  isLiteral(lastArg) &&
+                  typeof lastArg.value === "string" &&
+                  lastArg.value.endsWith(".node")
+                ) {
+                  const nodeFileName = lastArg.value;
+                  // Resolve the full path
+                  const parts: string[] = [baseDir];
+                  for (let i = 1; i < node.arguments.length - 1; i++) {
+                    const arg = node.arguments[i];
+                    if (isLiteral(arg) && typeof arg.value === "string") {
+                      parts.push(arg.value);
+                    }
+                  }
+                  parts.push(nodeFileName);
+                  const absolutePath = path.join(...parts);
+
+                  if (fs.existsSync(absolutePath)) {
+                    // Check if we already processed this file
+                    let info = nativeFiles.get(absolutePath);
+
+                    if (!info) {
+                      // Generate hash and store
+                      const content = fs.readFileSync(absolutePath);
+                      const hash = crypto
+                        .createHash("md5")
+                        .update(content)
+                        .digest("hex")
+                        .slice(0, 8);
+
+                      const hashedFilename = generateHashedFilename(
+                        nodeFileName,
+                        hash
+                      );
+
+                      info = {
+                        content,
+                        hashedFilename,
+                        originalPath: absolutePath,
+                      };
+                      nativeFiles.set(absolutePath, info);
+                      hashedFilenameToPath.set(hashedFilename, absolutePath);
+                    }
+
+                    // Record the replacement for the string literal
+                    replacements.push({
+                      start: lastArg.start,
+                      end: lastArg.end,
+                      value: `'${info.hashedFilename}'`,
+                    });
+                    modified = true;
+                  }
+                }
+              }
+            }
+
+            // Pattern 7: npm package require that resolves to a .node file
+            // Handles: require('@libsql/darwin-arm64') or require('native-addon')
+            // where the package's main entry is a .node file
+            if (
+              isIdentifier(calleeNode) &&
+              (calleeNode.name === "require" ||
+                customRequireVars.has(calleeNode.name)) &&
+              node.arguments.length === 1 &&
+              isLiteral(node.arguments[0]) &&
+              typeof node.arguments[0].value === "string"
+            ) {
+              const packageName = node.arguments[0].value as string;
+
+              // Skip relative paths (already handled by Pattern 5)
+              // Skip Node.js built-ins
+              if (
+                !packageName.startsWith(".") &&
+                !packageName.startsWith("/") &&
+                !packageName.startsWith("node:")
+              ) {
+                // Try to resolve the package and find a .node file
+                const nodeFilePath = resolveNpmPackageNodeFile(
+                  packageName,
+                  path.dirname(id)
+                );
+
+                if (nodeFilePath) {
+                  // Check if we already processed this file
+                  let info = nativeFiles.get(nodeFilePath);
+
+                  if (!info) {
+                    // Generate hash and store
+                    const content = fs.readFileSync(nodeFilePath);
+                    const hash = crypto
+                      .createHash("md5")
+                      .update(content)
+                      .digest("hex")
+                      .slice(0, 8);
+
+                    const filename = path.basename(nodeFilePath);
+                    const hashedFilename = generateHashedFilename(
+                      filename,
+                      hash
+                    );
+
+                    info = {
+                      content,
+                      hashedFilename,
+                      originalPath: nodeFilePath,
+                    };
+                    nativeFiles.set(nodeFilePath, info);
+                    hashedFilenameToPath.set(hashedFilename, nodeFilePath);
+                  }
+
+                  // Record the replacement for the entire require call argument
+                  const literalNode = node.arguments[0] as LiteralNode;
+                  replacements.push({
+                    start: literalNode.start,
+                    end: literalNode.end,
+                    value: `"./${info.hashedFilename}"`,
+                  });
+                  modified = true;
+                }
+              }
             }
           }
 
