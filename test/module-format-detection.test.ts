@@ -96,7 +96,7 @@ export { addon };`;
       // Should generate ES module syntax
       expect(loadResult).toContain("import { createRequire }");
       expect(loadResult).toContain("export default");
-      expect(loadResult).toContain("createRequireLocal");
+      expect(loadResult).toContain("__require");
       expect(loadResult).toContain("import.meta.url");
       
       // Should NOT contain CommonJS syntax
@@ -172,9 +172,10 @@ export { addon };`;
     });
   });
 
-  describe("bindings package - CommonJS context", () => {
-    it("should generate CommonJS code in load hook for .js file", async () => {
+  describe("bindings package - default output format (ESM)", () => {
+    it("should generate ESM code in load hook regardless of importer format (default output is ESM)", async () => {
       const plugin = nativeFilePlugin() as Plugin;
+      // Default config - no output format specified, defaults to ESM
       (plugin.configResolved as any)({
         command: "build",
         mode: "production",
@@ -219,19 +220,18 @@ module.exports = { addon };`;
         {}
       );
 
-      // resolveId now returns an object with { id, syntheticNamedExports }
+      // resolveId now returns the virtual ID string
       const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
 
-      // Should generate CommonJS syntax
-      expect(loadResult).toContain("module.exports");
-      expect(loadResult).toContain("require(");
+      // Default output format is ESM, so should generate ESM syntax
+      expect(loadResult).toContain("import { createRequire }");
+      expect(loadResult).toContain("export default");
+      expect(loadResult).toContain("import.meta.url");
 
-      // Should NOT contain ES module syntax
-      expect(loadResult).not.toContain("import { createRequire }");
-      expect(loadResult).not.toContain("export default");
-      expect(loadResult).not.toContain("import.meta.url");
+      // Should NOT contain raw CommonJS syntax
+      expect(loadResult).not.toContain("module.exports");
     });
   });
 
@@ -377,9 +377,10 @@ const binding = nodeGypBuild(__dirname);`;
     });
   });
 
-  describe("node-gyp-build - CommonJS context", () => {
-    it("should generate CommonJS code in load hook for .js file", async () => {
+  describe("node-gyp-build - default output format (ESM)", () => {
+    it("should generate ESM code in load hook regardless of importer format (default output is ESM)", async () => {
       const plugin = nativeFilePlugin() as Plugin;
+      // Default config - no output format specified, defaults to ESM
       (plugin.configResolved as any)({
         command: "build",
         mode: "production",
@@ -428,17 +429,16 @@ const binding = nodeGypBuild(__dirname);`;
         {}
       );
 
-      // resolveId now returns an object with { id, syntheticNamedExports }
+      // resolveId now returns the virtual ID string
       const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
 
-      // Should generate CommonJS syntax
-      expect(loadResult).toContain("module.exports");
-      expect(loadResult).toContain("require(");
-      expect(loadResult).not.toContain("import { createRequire }");
-      expect(loadResult).not.toContain("export default");
-      expect(loadResult).not.toContain("import.meta.url");
+      // Default output format is ESM, so should generate ESM syntax
+      expect(loadResult).toContain("import { createRequire }");
+      expect(loadResult).toContain("export default");
+      expect(loadResult).toContain("import.meta.url");
+      expect(loadResult).not.toContain("module.exports");
     });
   });
 
@@ -510,9 +510,10 @@ const binding = nodeGypBuild(__dirname);`;
     });
   });
 
-  describe("Regular .node imports - CommonJS context", () => {
-    it("should generate CommonJS code in load hook for .js file", async () => {
+  describe("Regular .node imports - default output format (ESM)", () => {
+    it("should generate ESM code in load hook regardless of importer format (default output is ESM)", async () => {
       const plugin = nativeFilePlugin() as Plugin;
+      // Default config - no output format specified, defaults to ESM
       (plugin.configResolved as any)({
         command: "build",
         mode: "production",
@@ -534,8 +535,49 @@ const binding = nodeGypBuild(__dirname);`;
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
-      
-      // Should generate CommonJS syntax
+
+      // Default output format is ESM, so should generate ESM syntax
+      expect(loadResult).toContain("import { createRequire }");
+      expect(loadResult).toContain("export default");
+      expect(loadResult).toContain("import.meta.url");
+      expect(loadResult).not.toContain("module.exports");
+    });
+  });
+
+  describe("Regular .node imports - explicit CJS output format", () => {
+    it("should generate CommonJS code when output format is explicitly CJS", async () => {
+      const plugin = nativeFilePlugin() as Plugin;
+      // Explicit CJS output format via rollupOptions
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+        build: {
+          rollupOptions: {
+            output: {
+              format: "cjs",
+            },
+          },
+        },
+      });
+
+      const nodeFilePath = path.join(tempDir, "addon.node");
+      fs.writeFileSync(nodeFilePath, Buffer.from("fake binary"));
+
+      const cjsFilePath = path.join(tempDir, "index.js");
+
+      const virtualId = await (plugin.resolveId as any).call(
+        {} as any,
+        "./addon.node",
+        cjsFilePath,
+        {}
+      );
+
+      expect(virtualId).toBeDefined();
+
+      const loadResult = await (plugin.load as any).call({} as any, virtualId);
+      expect(loadResult).toBeDefined();
+
+      // CJS output format should generate CommonJS syntax
       expect(loadResult).toContain("module.exports");
       expect(loadResult).toContain("require(");
       expect(loadResult).not.toContain("import { createRequire }");
@@ -545,8 +587,9 @@ const binding = nodeGypBuild(__dirname);`;
   });
 
   describe("Edge cases", () => {
-    it("should not mix require() with import.meta.url", async () => {
+    it("should not mix CJS module.exports with ESM export default (default ESM output)", async () => {
       const plugin = nativeFilePlugin() as Plugin;
+      // Default ESM output format
       (plugin.configResolved as any)({
         command: "build",
         mode: "production",
@@ -564,19 +607,53 @@ const binding = nodeGypBuild(__dirname);`;
       );
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
-      
-      // Should NOT have both require() and import.meta.url
-      const hasRequire = loadResult.includes("require(");
-      const hasImportMeta = loadResult.includes("import.meta.url");
-      
-      // If it has require, it should NOT have import.meta.url
-      if (hasRequire) {
-        expect(hasImportMeta).toBe(false);
-      }
+
+      // Default ESM output should use ESM pattern with createRequire
+      expect(loadResult).toContain("import.meta.url");
+      expect(loadResult).toContain("export default");
+      // Should NOT have raw module.exports (incompatible with ESM)
+      expect(loadResult).not.toContain("module.exports");
     });
 
-    it("should not mix module.exports with export default", async () => {
+    it("should not mix CJS module.exports with ESM export default (explicit CJS output)", async () => {
       const plugin = nativeFilePlugin() as Plugin;
+      // Explicit CJS output format
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+        build: {
+          rollupOptions: {
+            output: {
+              format: "cjs",
+            },
+          },
+        },
+      });
+
+      const nodeFilePath = path.join(tempDir, "addon.node");
+      fs.writeFileSync(nodeFilePath, Buffer.from("fake binary"));
+
+      const esmFilePath = path.join(tempDir, "index.mjs");
+      const virtualId = await (plugin.resolveId as any).call(
+        {} as any,
+        "./addon.node",
+        esmFilePath,
+        {}
+      );
+
+      const loadResult = await (plugin.load as any).call({} as any, virtualId);
+
+      // CJS output should use CJS pattern
+      expect(loadResult).toContain("module.exports");
+      expect(loadResult).toContain("require(");
+      // Should NOT have ESM features (incompatible with CJS)
+      expect(loadResult).not.toContain("import.meta.url");
+      expect(loadResult).not.toContain("export default");
+    });
+
+    it("ESM output should use createRequire pattern (require + import.meta.url is valid)", async () => {
+      const plugin = nativeFilePlugin() as Plugin;
+      // Default ESM output format
       (plugin.configResolved as any)({
         command: "build",
         mode: "production",
@@ -594,15 +671,16 @@ const binding = nodeGypBuild(__dirname);`;
       );
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
-      
-      // Should NOT have both module.exports and export default
-      const hasModuleExports = loadResult.includes("module.exports");
-      const hasExportDefault = loadResult.includes("export default");
-      
-      // If it has export default, it should NOT have module.exports
-      if (hasExportDefault) {
-        expect(hasModuleExports).toBe(false);
-      }
+
+      // ESM output uses createRequire pattern which correctly combines:
+      // - createRequire from 'node:module' (ESM import)
+      // - import.meta.url (ESM feature)
+      // - __require(...) call (the created require function)
+      expect(loadResult).toContain("import { createRequire }");
+      expect(loadResult).toContain("import.meta.url");
+      expect(loadResult).toContain("export default");
+      // The createRequire call creates a require function, but NOT module.exports
+      expect(loadResult).not.toContain("module.exports");
     });
   });
 });
