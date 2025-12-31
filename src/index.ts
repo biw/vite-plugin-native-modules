@@ -135,9 +135,9 @@ export default function nativeFilePlugin(
   // Reverse mapping from hashed filename to original file path
   // Used to resolve transformed bindings/node-gyp-build calls
   const hashedFilenameToPath = new Map<string, string>();
-  // Track module type (ES module vs CommonJS) for virtual modules
-  // Maps virtual module ID to whether it's an ES module
-  const virtualModuleTypes = new Map<string, boolean>();
+  // Track the output format from Vite config
+  // This determines whether we generate ESM or CJS code in the load hook
+  let outputFormat: "es" | "cjs" = "es"; // Default to ESM (Vite's default)
   let command: "build" | "serve" = "build";
 
   // Helper function to detect if a file is an ES module based on extension and content
@@ -581,6 +581,35 @@ export default function nativeFilePlugin(
   return {
     configResolved(config) {
       command = config.command;
+
+      // Detect output format from Vite config
+      // Priority: rollupOptions.output.format > lib.formats > default (es)
+      //
+      // LIMITATION: For multi-format builds (e.g., lib.formats: ['es', 'cjs']), this
+      // only uses the first format. Rollup's load hook is called once per module, not
+      // per output format. In practice, the ESM pattern (createRequire + import.meta.url)
+      // works correctly in both ESM and CJS outputs because Rollup handles the conversion.
+      const rollupOutput = config.build?.rollupOptions?.output;
+      if (rollupOutput) {
+        // rollupOptions.output can be an object or array of objects
+        const format = Array.isArray(rollupOutput)
+          ? rollupOutput[0]?.format
+          : rollupOutput.format;
+        if (format === "cjs" || format === "commonjs") {
+          outputFormat = "cjs";
+        } else {
+          outputFormat = "es";
+        }
+      } else if (config.build?.lib) {
+        // lib mode - use first format
+        // lib can be false or LibraryOptions, check for formats property
+        const lib = config.build.lib;
+        if (typeof lib === "object" && lib.formats) {
+          const formats = lib.formats;
+          outputFormat = formats[0] === "cjs" ? "cjs" : "es";
+        }
+      }
+      // Otherwise keep default 'es' (Vite's default for modern builds)
     },
 
     generateBundle() {
@@ -602,53 +631,23 @@ export default function nativeFilePlugin(
 
       if (!info) return null;
 
-      // Check if this virtual module is being loaded in an ES module context
-      // Try to get the tracked module type first
-      let isESModule = virtualModuleTypes.get(id);
-
-      // If not tracked, try to detect from the original path or use getModuleInfo if available
-      if (isESModule === undefined) {
-        // Try to detect from file extension as fallback
-        isESModule = detectModuleType(originalPath);
-
-        // If getModuleInfo is available, try to use it (though it may not work for virtual modules)
-        try {
-          if (typeof this.getModuleInfo === "function") {
-            const moduleInfo = this.getModuleInfo(id);
-            const format = (moduleInfo as { format?: string }).format;
-            if (moduleInfo && format) {
-              isESModule = format === "es";
-            }
-          }
-        } catch {
-          // Ignore errors, use fallback detection
-        }
-
-        // If still undefined, default to CommonJS (safer than ES module)
-        // This prevents mixing require() with import.meta.url
-        if (isESModule === undefined) {
-          isESModule = false;
-        }
-      }
-
-      // Return proxy code that requires the hashed file
-      // The hashed file will be in the same directory as the output bundle
-      //
-      // We use syntheticNamedExports (set in resolveId) to tell Rollup to resolve
-      // any named export requests from the default export's properties.
-      // This way, `const { databaseOpen } = require(...)` works correctly
-      // because Rollup gets databaseOpen from default.databaseOpen.
-      if (isESModule) {
+      // Generate code based on OUTPUT format, not the importer's format.
+      // This is important because:
+      // 1. Using CJS require() in an ESM output causes "Cannot determine intended
+      //    module format because both require() and top-level await are present"
+      // 2. Using import.meta.url in a CJS output doesn't work
+      // 3. The output format is what matters for the final bundled code
+      if (outputFormat === "es") {
         return `
-          import { createRequire } from 'node:module';
-          const createRequireLocal = createRequire(import.meta.url);
-          const nativeModule = createRequireLocal('./${info.hashedFilename}');
-          export default nativeModule;
-        `;
+import { createRequire } from 'node:module';
+const __require = createRequire(import.meta.url);
+const nativeModule = __require('./${info.hashedFilename}');
+export default nativeModule;
+`;
       } else {
         return `
-          module.exports = require('./${info.hashedFilename}');
-        `;
+module.exports = require('./${info.hashedFilename}');
+`;
       }
     },
 
@@ -673,13 +672,15 @@ export default function nativeFilePlugin(
       // Check if this matches a hashed filename we've generated
       if (hashedFilenameToPath.has(basename)) {
         const originalPath = hashedFilenameToPath.get(basename)!;
-        const importingModuleType = detectModuleTypeWithContext(this, importer);
         const virtualId = `\0native:${originalPath}`;
-        virtualModuleTypes.set(virtualId, importingModuleType);
-        // Return virtual module ID with syntheticNamedExports enabled
-        // This tells Rollup to resolve named exports from the default export's properties,
-        // which fixes the getAugmentedNamespace issue where destructuring fails
-        // because properties like databaseOpen aren't copied to the namespace.
+
+        // Use syntheticNamedExports to enable named import/destructuring patterns
+        // like `const { databaseOpen } = require('native-module')` or `import { foo } from 'native'`.
+        // This tells Rollup to derive named exports from the default export's properties.
+        //
+        // Note: This is incompatible with `export * from 'native-module'` patterns because
+        // Rollup cannot enumerate synthetic exports at bundle time. If you encounter errors
+        // with export * re-exports, consider restructuring to use named imports instead.
         return {
           id: virtualId,
           syntheticNamedExports: true,
@@ -698,11 +699,8 @@ export default function nativeFilePlugin(
       // Register the native file (generates hash, stores mapping)
       registerNativeFile(resolved);
 
-      // Track module type and return virtual module ID
-      const importingModuleType = detectModuleTypeWithContext(this, importer);
+      // Return virtual module ID
       const virtualId = `\0native:${resolved}`;
-      virtualModuleTypes.set(virtualId, importingModuleType);
-
       return virtualId;
     },
 

@@ -839,8 +839,9 @@ export { addon };`;
       expect(loadResult).not.toContain("module.exports");
     });
 
-    it("should generate CommonJS code in load hook for bindings in .js file", async () => {
+    it("should generate ESM code in load hook by default (regardless of importer format)", async () => {
       const plugin = nativeFilePlugin() as Plugin;
+      // Default config - no output format specified, defaults to ESM
       (plugin.configResolved as any)({
         command: "build",
         mode: "production",
@@ -881,10 +882,11 @@ module.exports = { addon };`;
       const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
-      expect(loadResult).toContain("module.exports");
-      expect(loadResult).toContain("require(");
-      expect(loadResult).not.toContain("import { createRequire }");
-      expect(loadResult).not.toContain("export default");
+      // Default output format is ESM, so should generate ESM syntax
+      expect(loadResult).toContain("import { createRequire }");
+      expect(loadResult).toContain("export default");
+      expect(loadResult).toContain("import.meta.url");
+      expect(loadResult).not.toContain("module.exports");
     });
   });
 });

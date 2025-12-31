@@ -580,13 +580,14 @@ describe("nativeFilePlugin", () => {
   });
 
   describe("Module Loading", () => {
-    it("should load virtual modules with proper require code", async () => {
+    it("should load virtual modules with ESM code by default", async () => {
       const plugin = nativeFilePlugin() as Plugin;
 
       expect(plugin.configResolved).toBeDefined();
       expect(plugin.resolveId).toBeDefined();
       expect(plugin.load).toBeDefined();
 
+      // Default config - no output format specified, defaults to ESM
       (plugin.configResolved as any)({
         command: "build",
         mode: "production",
@@ -610,13 +611,13 @@ describe("nativeFilePlugin", () => {
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
 
       expect(loadResult).toBeDefined();
-      // For CommonJS files (.js), should use module.exports
-      // For ES modules (.mjs), should use import/export
-      // Since importerPath is .js, it should be CommonJS
-      expect(loadResult).toContain("module.exports");
-      expect(loadResult).toContain("require(");
-      
-      // Test ES module format with .mjs file
+      // Default output format is ESM, so should use ESM syntax regardless of importer
+      expect(loadResult).toContain("import { createRequire }");
+      expect(loadResult).toContain("export default");
+      expect(loadResult).toContain("import.meta.url");
+      expect(loadResult).not.toContain("module.exports");
+
+      // Test with .mjs importer - should also use ESM (same default behavior)
       const esmImporterPath = path.join(tempDir, "index.mjs");
       const esmVirtualId = await (plugin.resolveId as any).call(
         {} as any,
@@ -628,7 +629,7 @@ describe("nativeFilePlugin", () => {
       expect(esmLoadResult).toBeDefined();
       expect(esmLoadResult).toContain("import { createRequire }");
       expect(esmLoadResult).toContain("export default");
-      expect(esmLoadResult).toContain("createRequireLocal");
+      expect(esmLoadResult).toContain("import.meta.url");
     });
 
     it("should return null for non-virtual modules", async () => {
@@ -643,8 +644,9 @@ describe("nativeFilePlugin", () => {
       expect(result).toBeNull();
     });
 
-    it("should handle edge case: virtual module ID without tracked type defaults to CommonJS", async () => {
+    it("should default to ESM output format", async () => {
       const plugin = nativeFilePlugin() as Plugin;
+      // Default config - defaults to ESM output
       (plugin.configResolved as any)({
         command: "build",
         mode: "production",
@@ -665,18 +667,27 @@ describe("nativeFilePlugin", () => {
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
-      
-      // Should default to CommonJS (safer than ES module)
-      expect(loadResult).toContain("module.exports");
-      expect(loadResult).toContain("require(");
-      expect(loadResult).not.toContain("import { createRequire }");
+
+      // Default output format is ESM
+      expect(loadResult).toContain("import { createRequire }");
+      expect(loadResult).toContain("export default");
+      expect(loadResult).toContain("import.meta.url");
+      expect(loadResult).not.toContain("module.exports");
     });
 
-    it("should not mix require() with import.meta.url in load hook output", async () => {
+    it("should use CJS output when explicitly configured", async () => {
       const plugin = nativeFilePlugin() as Plugin;
+      // Explicit CJS output format
       (plugin.configResolved as any)({
         command: "build",
         mode: "production",
+        build: {
+          rollupOptions: {
+            output: {
+              format: "cjs",
+            },
+          },
+        },
       });
 
       const nodeFilePath = path.join(tempDir, "test.node");
@@ -691,14 +702,12 @@ describe("nativeFilePlugin", () => {
       );
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
-      
-      // Should NOT have both require() and import.meta.url
-      const hasRequire = loadResult.includes("require(");
-      const hasImportMeta = loadResult.includes("import.meta.url");
-      
-      if (hasRequire) {
-        expect(hasImportMeta).toBe(false);
-      }
+
+      // CJS output format should generate CommonJS syntax
+      expect(loadResult).toContain("module.exports");
+      expect(loadResult).toContain("require(");
+      expect(loadResult).not.toContain("import { createRequire }");
+      expect(loadResult).not.toContain("import.meta.url");
     });
 
     it("should not mix module.exports with export default in load hook output", async () => {
