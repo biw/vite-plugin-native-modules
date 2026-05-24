@@ -1521,6 +1521,10 @@ module.exports = require('./${info.hashedFilename}');
             // Use the tracked local name if available, otherwise use 'createRequire'
             const funcName = createRequireLocalName || "createRequire";
             replacementCode = `${funcName}(import.meta.url)("./${info.hashedFilename}")`;
+          } else if (outputFormat === "es") {
+            // In ESM output, the virtual native module is an ES module with a default export.
+            // CommonJS importers need the default value to preserve native require() semantics.
+            replacementCode = `require("./${info.hashedFilename}").default`;
           } else {
             // For CommonJS, use require()
             replacementCode = `require("./${info.hashedFilename}")`;

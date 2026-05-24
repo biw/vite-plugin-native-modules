@@ -71,6 +71,81 @@ describe("node-gyp-build Support", () => {
       expect(result.code).not.toContain("__dirname");
     });
 
+    it("should preserve CommonJS require semantics when ESM output uses default native exports", () => {
+      const plugin = nativeFilePlugin() as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+        build: {
+          rollupOptions: {
+            output: {
+              format: "es",
+            },
+          },
+        },
+      });
+
+      const prebuildsDir = path.join(
+        tempDir,
+        "prebuilds",
+        `${platform}-${arch}`
+      );
+      fs.mkdirSync(prebuildsDir, { recursive: true });
+
+      fs.writeFileSync(
+        path.join(prebuildsDir, "binding.node"),
+        Buffer.from("native binding")
+      );
+
+      const jsFilePath = path.join(tempDir, "index.js");
+      const code = `const binding = require('node-gyp-build')(__dirname);`;
+
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, jsFilePath);
+
+      expect(result).toBeDefined();
+      expect(result.code).toContain(".node\").default");
+    });
+
+    it("should keep plain CommonJS require when output format is CommonJS", () => {
+      const plugin = nativeFilePlugin() as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+        build: {
+          rollupOptions: {
+            output: {
+              format: "cjs",
+            },
+          },
+        },
+      });
+
+      const prebuildsDir = path.join(
+        tempDir,
+        "prebuilds",
+        `${platform}-${arch}`
+      );
+      fs.mkdirSync(prebuildsDir, { recursive: true });
+
+      fs.writeFileSync(
+        path.join(prebuildsDir, "binding.node"),
+        Buffer.from("native binding")
+      );
+
+      const jsFilePath = path.join(tempDir, "index.js");
+      const code = `const binding = require('node-gyp-build')(__dirname);`;
+
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, jsFilePath);
+
+      expect(result).toBeDefined();
+      expect(result.code).toContain(".node\")");
+      expect(result.code).not.toContain(".node\").default");
+    });
+
     it("should handle napi.node files in prebuilds", () => {
       const plugin = nativeFilePlugin() as Plugin;
 
