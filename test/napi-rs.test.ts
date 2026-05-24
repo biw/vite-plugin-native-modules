@@ -69,7 +69,7 @@ describe("NAPI-RS Support", () => {
       expect(result.code).toContain(".node");
       // Should contain hashed filename (uppercase hash)
       // Format: libsql.{platform}-{arch}-{HASH}.node
-      expect(result.code).toMatch(/libsql\.[a-z]+-[a-z0-9]+-[A-F0-9]+\.node/);
+      expect(result.code).toMatch(/libsql\.[a-z0-9]+-[a-z0-9]+-[A-F0-9]+\.node/);
       // Should NOT contain original unhashed filename
       expect(result.code).not.toContain(`'${nodeFileName}'`);
     });
@@ -101,7 +101,7 @@ describe("NAPI-RS Support", () => {
       expect(result).toBeDefined();
       expect(result.code).toContain(".node");
       // Should contain hashed filename
-      expect(result.code).toMatch(/libsql\.[a-z]+-[a-z0-9]+-[A-F0-9]+\.node/);
+      expect(result.code).toMatch(/libsql\.[a-z0-9]+-[a-z0-9]+-[A-F0-9]+\.node/);
     });
 
     it("should use consistent hash for same file", () => {
@@ -130,7 +130,7 @@ describe("NAPI-RS Support", () => {
 
       expect(result).toBeDefined();
       // Extract all hashed filenames from the result
-      const matches = result.code.match(/libsql\.[a-z]+-[a-z0-9]+-[A-F0-9]+\.node/g);
+      const matches = result.code.match(/libsql\.[a-z0-9]+-[a-z0-9]+-[A-F0-9]+\.node/g);
       expect(matches).toBeDefined();
       expect(matches!.length).toBe(2);
       // Both should have the same hash
