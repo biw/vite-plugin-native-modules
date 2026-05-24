@@ -208,17 +208,20 @@ export default function nativeFilePlugin(
     // Always process .node files
     if (filePath.endsWith(".node")) return true;
 
+    const normalizedCurrentFileId = currentFileId.replace(/\\/g, "/");
+    const normalizedFilePath = filePath.replace(/\\/g, "/");
+
     // Check additional native file configurations
     if (options.additionalNativeFiles) {
       for (const pkgConfig of options.additionalNativeFiles) {
         // Check if current file is within this package's node_modules
         const pkgPath = `node_modules/${pkgConfig.package}`;
-        if (currentFileId.includes(pkgPath)) {
+        if (normalizedCurrentFileId.includes(pkgPath)) {
           // Check if this file matches any of the configured file names
           for (const fileName of pkgConfig.fileNames) {
             if (
-              filePath.endsWith(fileName) ||
-              filePath.includes(`/${fileName}`)
+              normalizedFilePath.endsWith(fileName) ||
+              normalizedFilePath.includes(`/${fileName}`)
             ) {
               return true;
             }
