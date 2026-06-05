@@ -729,11 +729,11 @@ describe("nativeFilePlugin", () => {
       );
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
-      
+
       // Should NOT have both module.exports and export default
       const hasModuleExports = loadResult.includes("module.exports");
       const hasExportDefault = loadResult.includes("export default");
-      
+
       if (hasExportDefault) {
         expect(hasModuleExports).toBe(false);
       }
@@ -784,6 +784,58 @@ describe("nativeFilePlugin", () => {
       expect(emittedFiles[0].fileName).toContain("-");
       expect(emittedFiles[0].source).toBeDefined();
       expect(Buffer.isBuffer(emittedFiles[0].source)).toBe(true);
+    });
+
+    it.each([
+      { watchMode: true, emptyOutDir: false, expectedEmits: 1 },
+      { watchMode: true, emptyOutDir: true, expectedEmits: 2 },
+      { watchMode: false, emptyOutDir: false, expectedEmits: 2 },
+    ])(
+      "should only suppress re-emits when watchMode=$watchMode and emptyOutDir=$emptyOutDir",
+      async ({ watchMode, emptyOutDir, expectedEmits }) => {
+      const plugin = nativeFilePlugin() as Plugin;
+      const emittedFiles: any[] = [];
+
+      expect(plugin.configResolved).toBeDefined();
+      expect(plugin.resolveId).toBeDefined();
+      expect(plugin.generateBundle).toBeDefined();
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "development",
+        build: {
+          emptyOutDir,
+        },
+      });
+
+      const nodeFilePath = path.join(tempDir, "watch.node");
+      const importerPath = path.join(tempDir, "index.js");
+
+      fs.writeFileSync(nodeFilePath, Buffer.from("watch native module"));
+
+      const mockContext = {
+        emitFile: (file: any) => {
+          emittedFiles.push(file);
+          return "mock-reference-id";
+        },
+        meta: {
+          watchMode
+        },
+      };
+
+      // Resolve to populate internal map
+      await (plugin.resolveId as any).call(
+        mockContext,
+        "./watch.node",
+        importerPath,
+        {}
+      );
+
+      (plugin.generateBundle as any).call(mockContext, {}, {}, false);
+      expect(emittedFiles).toHaveLength(1);
+
+      (plugin.generateBundle as any).call(mockContext, {}, {}, false);
+      expect(emittedFiles).toHaveLength(expectedEmits);
     });
   });
 

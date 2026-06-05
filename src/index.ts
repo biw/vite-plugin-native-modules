@@ -132,6 +132,7 @@ export default function nativeFilePlugin(
 ): Plugin {
   const name = "plugin-native-modules";
   const nativeFiles = new Map<string, NativeFileInfo>();
+  const emittedFiles = new Set<string>();
   // Reverse mapping from hashed filename to original file path
   // Used to resolve transformed bindings/node-gyp-build calls
   const hashedFilenameToPath = new Map<string, string>();
@@ -139,6 +140,7 @@ export default function nativeFilePlugin(
   // This determines whether we generate ESM or CJS code in the load hook
   let outputFormat: "es" | "cjs" = "es"; // Default to ESM (Vite's default)
   let command: "build" | "serve" = "build";
+  let emptyOutDir: boolean | null = null;
 
   // Helper function to detect if a file is an ES module based on extension and content
   function detectModuleType(fileId: string, code?: string): boolean {
@@ -581,6 +583,7 @@ export default function nativeFilePlugin(
   return {
     configResolved(config) {
       command = config.command;
+      emptyOutDir = config.build?.emptyOutDir;
 
       // Detect output format from Vite config
       // Priority: rollupOptions.output.format > lib.formats > default (es)
@@ -615,6 +618,19 @@ export default function nativeFilePlugin(
     generateBundle() {
       // Emit each .node file as an asset
       nativeFiles.forEach((info) => {
+        // Only emit once in watch mode (and when emptyOutDir isn't deleting the files) because file
+        // writes may fail if the file is already in use by a running app, especially on Windows. Do
+        // this even if the file content did change, because as it stands, the NativeFileInfo anyway
+        // contains the previous file content (which is a separate issue, and less important because
+        // addons are typically prebuilt meaning unlikely to change).
+        if (this.meta?.watchMode && emptyOutDir === false) {
+          if (emittedFiles.has(info.hashedFilename)) {
+            return;
+          } else {
+            emittedFiles.add(info.hashedFilename);
+          }
+        }
+
         this.emitFile({
           fileName: info.hashedFilename,
           source: info.content,
