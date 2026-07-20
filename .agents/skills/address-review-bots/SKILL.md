@@ -67,9 +67,15 @@ permalink | isOutdated or n/a | claim | classification | evidence | reply/resolu
 
 6. Self-review the delta, then verify with the repository's final validation command.
 
-Choose the command from repo docs, package scripts, prior user instructions, or CI configuration. If the user has set `REVIEW_BOT_VALIDATION_COMMAND`, use that exactly. Otherwise prefer a comprehensive existing script such as `pnpm precommit`, `pnpm test`, `npm test`, `bun test`, or the repo's documented equivalent.
+If the user has set `REVIEW_BOT_VALIDATION_COMMAND`, use it exactly. Otherwise resolve validation in this order:
 
-Use narrower checks while iterating, but do not commit or push review-bot fixes without a fresh final validation run after the last code change.
+1. Use a command required by repository instructions or CI.
+2. Inspect the applicable package manifest, starting at the repository root and following workspace configuration for changed packages. Detect its package manager from the root manifest's `packageManager` field, then its lockfile (`pnpm-lock.yaml`, `yarn.lock`, `package-lock.json` or `npm-shrinkwrap.json`, `bun.lock` or `bun.lockb`). Do not switch package managers merely because another executable is available.
+3. If a `precommit` package script exists, run it with the detected package manager, for example `pnpm run precommit`, `yarn run precommit`, `npm run precommit`, or `bun run precommit`.
+4. If `precommit` is absent, run each available `lint` and `test` package script with that same package manager. Do not invoke a missing script or treat its absence as a validation failure.
+5. If neither script exists, use the repository's documented non-JavaScript or CI-equivalent checks. If none can be found, report that validation coverage is unavailable instead of inventing a command.
+
+Use narrower checks while iterating, but do not commit or push review-bot fixes without running every resolved final validation command after the last code change.
 
 7. Commit and push if fixes were made:
 

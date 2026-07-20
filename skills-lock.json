@@ -5,7 +5,7 @@
       "source": "biw/skills",
       "sourceType": "github",
       "skillPath": "skills/address-review-bots/SKILL.md",
-      "computedHash": "105a174d0d57d5bdaabb53e54ccf611567c4475bb2dbd66452eec3fd137e3884"
+      "computedHash": "11b729b395036cad7557f8f3a2a8c8997ddd1fbe43733d65904958d0e80f73dd"
     },
     "better-logging": {
       "source": "biw/skills",
@@ -29,7 +29,7 @@
       "source": "biw/skills",
       "sourceType": "github",
       "skillPath": "skills/review-fix-address-bots/SKILL.md",
-      "computedHash": "24453327e06306b9a1c57c24a955d2181593140cbaec11c3d9b5cecec57c7dad"
+      "computedHash": "20839a260398b2f6f7f725adbca7b44fd2c2ab20f772cb682375a8f766a2547a"
     }
   }
 }

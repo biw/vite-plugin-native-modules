@@ -1,6 +1,6 @@
 ---
 name: review-fix-address-bots
-description: Integrate the PR base, run a configurable persistent read-only reviewer cohort, fix and re-review findings, require pnpm precommit, address review bots, and compare model quality.
+description: Integrate the PR base, run persistent read-only reviewers, fix and re-review findings, validate with repo-native commands, address review bots, and compare model quality.
 ---
 
 # Review, Fix, and Address Bots
@@ -121,11 +121,16 @@ Use the same configured session handles recorded and continuity-checked in phase
 ## 6. Validate, commit, and push
 
 1. Stage only agent-owned files or hunks; do not use broad staging that could capture pre-existing work. Inspect `git diff --cached` before committing.
-2. Commit with the repository's commit workflow, then run `pnpm precommit` against the exact post-commit tree. It must pass before every push, including later review-bot fix pushes. If a hook, formatter, generator, or other tool changes files after it passes, incorporate the intended changes and rerun it. Never rely on a result from before the latest tree mutation.
-3. If `pnpm precommit` fails, diagnose and resolve failures caused by the branch. Do not push while it is failing. Do not modify unrelated user work merely to make the command pass; report a genuinely unrelated blocker with evidence.
-4. Confirm the committed diff and remaining worktree state contain only the intended ownership boundaries.
-5. Immediately before pushing, record the PR number, UTC review-window timestamp, and pushed commit SHA in `.context`. Recapture the timestamp after a failed or retried push.
-6. Push the verified SHA to the intended remote and branch without renaming it. Confirm the PR head now equals that SHA.
+2. Resolve the repository's final validation command before the first push:
+   - Use an explicit user command first, then a command required by repository instructions or CI.
+   - Otherwise inspect the applicable package manifest, starting at the repository root and following workspace configuration for changed packages. Detect its package manager from the root manifest's `packageManager` field, then its lockfile (`pnpm-lock.yaml`, `yarn.lock`, `package-lock.json` or `npm-shrinkwrap.json`, `bun.lock` or `bun.lockb`). Do not switch package managers merely because another executable is available.
+   - If a `precommit` package script exists, run it with the detected package manager, for example `pnpm run precommit`, `yarn run precommit`, `npm run precommit`, or `bun run precommit`.
+   - If `precommit` is absent, run each available `lint` and `test` package script with that same package manager. Do not invoke a missing script or treat its absence as a validation failure. If neither exists, use the repository's documented non-JavaScript or CI-equivalent checks; if none can be found, report that validation coverage is unavailable instead of inventing a command.
+3. Commit with the repository's commit workflow, then run the resolved command or commands against the exact post-commit tree. They must pass before every push, including later review-bot fix pushes. If a hook, formatter, generator, or other tool changes files after validation, incorporate the intended changes and rerun all final commands. Never rely on a result from before the latest tree mutation.
+4. If validation fails, diagnose and resolve failures caused by the branch. Do not push while it is failing. Do not modify unrelated user work merely to make a command pass; report a genuinely unrelated blocker with evidence.
+5. Confirm the committed diff and remaining worktree state contain only the intended ownership boundaries.
+6. Immediately before pushing, record the PR number, UTC review-window timestamp, and pushed commit SHA in `.context`. Recapture the timestamp after a failed or retried push.
+7. Push the verified SHA to the intended remote and branch without renaming it. Confirm the PR head now equals that SHA.
 
 ## 7. Close the review-bot loop
 
@@ -134,7 +139,7 @@ Use the same configured session handles recorded and continuity-checked in phase
 3. Pass the recorded push timestamp into the review-bot workflow when supported.
 4. Wait for each specifically requested review bot to review the recorded pushed SHA. Treat a missing bot review or timeout as unknown, not clean. If the PR head changes unexpectedly, stop and reconcile ownership before processing feedback.
 5. Classify every substantive observation, fix valid actionable and valid low-risk cleanup findings, and self-review the delta.
-6. After any bot-driven code change, commit the owned fix and run a fresh `pnpm precommit` against the resulting tree before pushing.
+6. After any bot-driven code change, commit the owned fix and rerun the resolved final validation command or commands against the resulting tree before pushing.
 7. Repeat the bot loop according to `address-review-bots` until clean, a user decision is required, the skill's loop limit is reached, or checks time out.
 
 ## Finalize the run log
@@ -154,7 +159,7 @@ Report:
 - the fetched target branch and SHA, integration method, and any conflict resolutions,
 - each distinct initial finding and its classification or fix,
 - remediation-review round count, reviewer pushback, improvements made, and evidence-backed final disagreements,
-- the `pnpm precommit` result for every push,
+- the resolved final validation command or commands and their result for every push,
 - commit SHA(s) and PR URL,
 - review-bot loop count and the classification/action for every substantive bot observation,
 - any remaining user decision, timeout, or external blocker.
