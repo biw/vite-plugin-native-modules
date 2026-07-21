@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import nativeFilePlugin from "../src/index.js";
 import type { Plugin } from "vite";
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import os from "node:os";
 import { parse as acornParse } from "acorn";
@@ -459,10 +460,48 @@ describe("nativeFilePlugin", () => {
       const context = { parse };
       const result = (plugin.transform as any).call(context, code, jsFile);
 
-      expect(result).toBeDefined();
+      expect(result).not.toBeNull();
       expect(result.code).toContain("addon-");
       expect(result.code).toContain(".node-macos");
       expect(result.code).not.toBe(code);
+    });
+
+    it("should match additional native files for Windows-style importer paths", () => {
+      const plugin = nativeFilePlugin({
+        forced: true,
+        additionalNativeFiles: [
+          {
+            package: "test-native-pkg",
+            fileNames: ["addon.node-macos"],
+          },
+        ],
+      }) as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+      });
+
+      const pkgDir = path.join(tempDir, "node_modules", "test-native-pkg");
+      const nativeFile = path.join(pkgDir, "build", "addon.node-macos");
+      fs.mkdirSync(path.dirname(nativeFile), { recursive: true });
+      fs.writeFileSync(nativeFile, Buffer.from("windows path binary"));
+
+      const windowsStyleImporter = path
+        .join(pkgDir, "lib", "index.js")
+        .replace(/\//g, "\\");
+      const code = `const addon = require(${JSON.stringify(nativeFile)});`;
+
+      const context = { parse };
+      const result = (plugin.transform as any).call(
+        context,
+        code,
+        windowsStyleImporter
+      );
+
+      expect(result).not.toBeNull();
+      expect(result.code).toContain("addon-");
+      expect(result.code).toContain(".node-macos");
     });
 
     it("should only process files for configured packages", () => {
@@ -630,6 +669,65 @@ describe("nativeFilePlugin", () => {
       expect(esmLoadResult).toContain("import { createRequire }");
       expect(esmLoadResult).toContain("export default");
       expect(esmLoadResult).toContain("import.meta.url");
+    });
+
+    it("should keep the CommonJS auto-interoperability marker internal", async () => {
+      const plugin = nativeFilePlugin() as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+        build: {
+          commonjsOptions: {
+            requireReturnsDefault: "auto",
+          },
+        },
+      });
+
+      const nodeFilePath = path.join(tempDir, "test.node");
+      fs.writeFileSync(nodeFilePath, Buffer.from("test"));
+      const importerPath = path.join(tempDir, "index.js");
+
+      const directVirtualId = await (plugin.resolveId as any).call(
+        {} as any,
+        "./test.node",
+        importerPath,
+        {}
+      );
+      const directLoadResult = await (plugin.load as any).call(
+        {} as any,
+        directVirtualId
+      );
+
+      expect(directLoadResult).not.toContain("__vitePluginNativeModule");
+
+      const hashedFilename = directLoadResult.match(
+        /__require\('\.\/([^']+\.node)'\)/
+      )?.[1];
+      expect(hashedFilename).toBeDefined();
+
+      const requireResolution = await (plugin.resolveId as any).call(
+        {} as any,
+        `./${hashedFilename}?native-require=${crypto
+          .createHash("sha256")
+          .update(nodeFilePath)
+          .digest("hex")}`,
+        importerPath,
+        {}
+      );
+      const requireVirtualId =
+        typeof requireResolution === "object"
+          ? requireResolution.id
+          : requireResolution;
+      const requireLoadResult = await (plugin.load as any).call(
+        {} as any,
+        requireVirtualId
+      );
+
+      expect(requireVirtualId).toContain("?native-require");
+      expect(requireLoadResult).toContain(
+        "export const __vitePluginNativeModule = true;"
+      );
     });
 
     it("should return null for non-virtual modules", async () => {

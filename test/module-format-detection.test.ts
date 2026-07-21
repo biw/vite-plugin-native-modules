@@ -69,9 +69,9 @@ export { addon };`;
 
       // Extract the hashed filename from the transformed code
       // Try multiple patterns to match the transformed code
-      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node)['"]\)/);
+      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       if (!match) {
-        match = transformResult.code.match(/require\(['"]([^'"]+\.node)['"]\)/);
+        match = transformResult.code.match(/require\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       }
       expect(match).not.toBeNull();
       const hashedFilename = match![1];
@@ -146,9 +146,9 @@ export { addon };`;
       expect(transformResult.code).toBeDefined();
 
       // Try multiple patterns to match the transformed code
-      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node)['"]\)/);
+      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       if (!match) {
-        match = transformResult.code.match(/require\(['"]([^'"]+\.node)['"]\)/);
+        match = transformResult.code.match(/require\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       }
       expect(match).not.toBeNull();
       const hashedFilename = match![1];
@@ -206,9 +206,9 @@ module.exports = { addon };`;
       expect(transformResult.code).toBeDefined();
 
       // Try multiple patterns to match the transformed code
-      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node)['"]\)/);
+      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       if (!match) {
-        match = transformResult.code.match(/require\(['"]([^'"]+\.node)['"]\)/);
+        match = transformResult.code.match(/require\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       }
       expect(match).not.toBeNull();
       const hashedFilename = match![1];
@@ -278,9 +278,9 @@ const binding = nodeGypBuild(__dirname);`;
       expect(transformResult.code).toContain(".node");
 
       // Try to match either createRequire pattern or direct require pattern
-      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node)['"]\)/);
+      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       if (!match) {
-        match = transformResult.code.match(/require\(['"]([^'"]+\.node)['"]\)/);
+        match = transformResult.code.match(/require\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       }
       expect(match).not.toBeNull();
       const hashedFilename = match![1];
@@ -351,9 +351,9 @@ const binding = nodeGypBuild(__dirname);`;
       expect(transformResult.code).toBeDefined();
 
       // Try to match either createRequire pattern or direct require pattern
-      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node)['"]\)/);
+      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       if (!match) {
-        match = transformResult.code.match(/require\(['"]([^'"]+\.node)['"]\)/);
+        match = transformResult.code.match(/require\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       }
       expect(match).not.toBeNull();
       const hashedFilename = match![1];
@@ -415,9 +415,9 @@ const binding = nodeGypBuild(__dirname);`;
       expect(transformResult.code).toContain(".node");
 
       // Try multiple patterns to match the transformed code
-      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node)['"]\)/);
+      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       if (!match) {
-        match = transformResult.code.match(/require\(['"]([^'"]+\.node)['"]\)/);
+        match = transformResult.code.match(/require\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       }
       expect(match).not.toBeNull();
       const hashedFilename = match![1];

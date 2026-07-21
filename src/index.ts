@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { Plugin } from "vite";
+import type { Plugin, RollupCommonJSOptions } from "vite";
 
 interface NativeFileInfo {
   /** File content for emission */
@@ -131,14 +131,39 @@ export default function nativeFilePlugin(
   options: NativeFilePluginOptions = {}
 ): Plugin {
   const name = "plugin-native-modules";
+  const nativeRequireSuffix = "?native-require";
+  const nativeRequireQuery = "?native-require=";
   const nativeFiles = new Map<string, NativeFileInfo>();
+  const nativeRequirePaths = new Map<string, string>();
   // Reverse mapping from hashed filename to original file path
   // Used to resolve transformed bindings/node-gyp-build calls
   const hashedFilenameToPath = new Map<string, string>();
   // Track the output format from Vite config
   // This determines whether we generate ESM or CJS code in the load hook
   let outputFormat: "es" | "cjs" = "es"; // Default to ESM (Vite's default)
+  let requireReturnsDefault: RollupCommonJSOptions["requireReturnsDefault"];
   let command: "build" | "serve" = "build";
+
+  function commonJSRequireReturnsDefault(nativeFilePath: string): boolean {
+    const virtualId = `\0native:${nativeFilePath}${nativeRequireSuffix}`;
+    const option =
+      typeof requireReturnsDefault === "function"
+        ? requireReturnsDefault(virtualId)
+        : requireReturnsDefault;
+
+    // The internal require wrapper has an explicit named export, so "auto"
+    // keeps returning its namespace. These modes always return its default.
+    return option === true || option === "preferred";
+  }
+
+  function nativeRequireToken(nativeFilePath: string): string {
+    const token = crypto
+      .createHash("sha256")
+      .update(nativeFilePath)
+      .digest("hex");
+    nativeRequirePaths.set(token, nativeFilePath);
+    return token;
+  }
 
   // Helper function to detect if a file is an ES module based on extension and content
   function detectModuleType(fileId: string, code?: string): boolean {
@@ -555,6 +580,7 @@ export default function nativeFilePlugin(
         originalPath: absolutePath,
       };
       nativeFiles.set(absolutePath, info);
+      nativeRequireToken(absolutePath);
       hashedFilenameToPath.set(hashedFilename, absolutePath);
     }
     return info;
@@ -584,6 +610,8 @@ export default function nativeFilePlugin(
   return {
     configResolved(config) {
       command = config.command;
+      requireReturnsDefault =
+        config.build?.commonjsOptions?.requireReturnsDefault;
 
       // Detect output format from Vite config
       // Priority: rollupOptions.output.format > lib.formats > default (es)
@@ -629,7 +657,11 @@ export default function nativeFilePlugin(
     load(id) {
       if (!id.startsWith("\0native:")) return null;
 
-      const originalPath = id.slice("\0native:".length);
+      const isRequireWrapper = id.endsWith(nativeRequireSuffix);
+      const originalPath = id.slice(
+        "\0native:".length,
+        isRequireWrapper ? -nativeRequireSuffix.length : undefined
+      );
       const info = nativeFiles.get(originalPath);
 
       if (!info) return null;
@@ -645,6 +677,7 @@ export default function nativeFilePlugin(
 import { createRequire } from 'node:module';
 const __require = createRequire(import.meta.url);
 const nativeModule = __require('./${info.hashedFilename}');
+${isRequireWrapper ? "export const __vitePluginNativeModule = true;" : ""}
 export default nativeModule;
 `;
       } else {
@@ -674,8 +707,24 @@ module.exports = require('./${info.hashedFilename}');
 
       // Check if this matches a hashed filename we've generated
       if (hashedFilenameToPath.has(basename)) {
-        const originalPath = hashedFilenameToPath.get(basename)!;
-        const virtualId = `\0native:${originalPath}`;
+        const queryIndex = source.indexOf(nativeRequireQuery);
+        const requireToken =
+          queryIndex >= 0
+            ? source
+                .slice(queryIndex + nativeRequireQuery.length)
+                .split("&")[0]
+            : null;
+        const queriedPath = requireToken
+          ? nativeRequirePaths.get(requireToken)
+          : undefined;
+        const queriedInfo = queriedPath ? nativeFiles.get(queriedPath) : null;
+        const isRequireWrapper = queriedInfo?.hashedFilename === basename;
+        const originalPath = isRequireWrapper
+          ? queriedPath!
+          : hashedFilenameToPath.get(basename)!;
+        const virtualId = `\0native:${originalPath}${
+          isRequireWrapper ? nativeRequireSuffix : ""
+        }`;
 
         // Use syntheticNamedExports to enable named import/destructuring patterns
         // like `const { databaseOpen } = require('native-module')` or `import { foo } from 'native'`.
@@ -1524,7 +1573,12 @@ module.exports = require('./${info.hashedFilename}');
           } else if (outputFormat === "es") {
             // In ESM output, the virtual native module is an ES module with a default export.
             // CommonJS importers need the default value to preserve native require() semantics.
-            replacementCode = `require("./${info.hashedFilename}").default`;
+            const requireCode = `require("./${info.hashedFilename}${
+              nativeRequireQuery
+            }${nativeRequireToken(nodeFilePath)}")`;
+            replacementCode = commonJSRequireReturnsDefault(nodeFilePath)
+              ? requireCode
+              : `${requireCode}.default`;
           } else {
             // For CommonJS, use require()
             replacementCode = `require("./${info.hashedFilename}")`;

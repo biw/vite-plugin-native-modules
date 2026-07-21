@@ -25,6 +25,18 @@ yarn add vite-plugin-native-modules
 pnpm add vite-plugin-native-modules
 ```
 
+## Development
+
+This repository uses pnpm for dependency management and development workflows:
+
+```bash
+corepack enable
+pnpm install
+pnpm lint
+pnpm test
+pnpm build
+```
+
 ## Usage
 
 Add the plugin to your `vite.config.ts`:
