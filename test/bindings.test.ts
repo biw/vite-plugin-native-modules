@@ -640,7 +640,7 @@ module.exports = load('binding');`;
       expect(transformResult).not.toBeNull();
       expect(transformResult.code).toBeDefined();
       expect(transformResult.code).toMatch(
-        /require\("\.\/addon-[A-F0-9]{8}\.node"\)/
+        /require\("\.\/addon-[A-F0-9]{8}\.node\?native-require=[a-f0-9]{64}"\)/
       );
 
       // Extract the hashed filename from the transformed code
@@ -724,7 +724,7 @@ module.exports = load('binding');`;
       );
 
       expect(transformResult.code).toMatch(
-        /require\("\.\/[A-F0-9]{8}\.node"\)/
+        /require\("\.\/[A-F0-9]{8}\.node\?native-require=[a-f0-9]{64}"\)/
       );
 
       const match = transformResult.code.match(/require\("\.\/([^"]+)"\)/);

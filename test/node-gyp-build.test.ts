@@ -71,6 +71,176 @@ describe("node-gyp-build Support", () => {
       expect(result.code).not.toContain("__dirname");
     });
 
+    it("should preserve CommonJS require semantics when ESM output uses default native exports", () => {
+      const plugin = nativeFilePlugin() as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+        build: {
+          rollupOptions: {
+            output: {
+              format: "es",
+            },
+          },
+        },
+      });
+
+      const prebuildsDir = path.join(
+        tempDir,
+        "prebuilds",
+        `${platform}-${arch}`
+      );
+      fs.mkdirSync(prebuildsDir, { recursive: true });
+
+      fs.writeFileSync(
+        path.join(prebuildsDir, "binding.node"),
+        Buffer.from("native binding")
+      );
+
+      const jsFilePath = path.join(tempDir, "index.js");
+      const code = `const binding = require('node-gyp-build')(__dirname);`;
+
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, jsFilePath);
+
+      expect(result).toBeDefined();
+      expect(result.code).toMatch(
+        /\.node\?native-require=[a-f0-9]{64}"\)\.default/
+      );
+    });
+
+    it("should preserve native file identity when generated filenames collide", async () => {
+      const firstDir = path.join(tempDir, "first");
+      const secondDir = path.join(tempDir, "second");
+      const firstPrebuildsDir = path.join(
+        firstDir,
+        "prebuilds",
+        `${platform}-${arch}`
+      );
+      const secondPrebuildsDir = path.join(
+        secondDir,
+        "prebuilds",
+        `${platform}-${arch}`
+      );
+      fs.mkdirSync(firstPrebuildsDir, { recursive: true });
+      fs.mkdirSync(secondPrebuildsDir, { recursive: true });
+
+      const firstNodeFile = path.join(firstPrebuildsDir, "binding.node");
+      const secondNodeFile = path.join(secondPrebuildsDir, "binding.node");
+      const sharedContent = Buffer.from("identical native binding");
+      fs.writeFileSync(firstNodeFile, sharedContent);
+      fs.writeFileSync(secondNodeFile, sharedContent);
+
+      const plugin = nativeFilePlugin() as Plugin;
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+        build: {
+          rollupOptions: {
+            output: {
+              format: "es",
+            },
+          },
+          commonjsOptions: {
+            requireReturnsDefault: (id: string) =>
+              id.includes(firstNodeFile) ? "preferred" : false,
+          },
+        },
+      });
+
+      const code = `const binding = require('node-gyp-build')(__dirname);`;
+      const firstImporter = path.join(firstDir, "index.js");
+      const secondImporter = path.join(secondDir, "index.js");
+      const context = { parse };
+      const firstResult = (plugin.transform as any).call(
+        context,
+        code,
+        firstImporter
+      );
+      const secondResult = (plugin.transform as any).call(
+        context,
+        code,
+        secondImporter
+      );
+
+      const firstSpecifier = firstResult.code.match(/require\("([^"]+)"\)/)?.[1];
+      const secondSpecifier = secondResult.code.match(
+        /require\("([^"]+)"\)/
+      )?.[1];
+      expect(firstSpecifier).toBeDefined();
+      expect(secondSpecifier).toBeDefined();
+      expect(firstSpecifier).not.toBe(secondSpecifier);
+      expect(firstResult.code).not.toContain(").default");
+      expect(secondResult.code).toContain(").default");
+
+      const firstResolution = await (plugin.resolveId as any).call(
+        {} as any,
+        firstSpecifier,
+        firstImporter,
+        {}
+      );
+      const secondResolution = await (plugin.resolveId as any).call(
+        {} as any,
+        secondSpecifier,
+        secondImporter,
+        {}
+      );
+      const firstVirtualId =
+        typeof firstResolution === "object"
+          ? firstResolution.id
+          : firstResolution;
+      const secondVirtualId =
+        typeof secondResolution === "object"
+          ? secondResolution.id
+          : secondResolution;
+
+      expect(firstVirtualId).toBe(
+        `\0native:${firstNodeFile}?native-require`
+      );
+      expect(secondVirtualId).toBe(
+        `\0native:${secondNodeFile}?native-require`
+      );
+    });
+
+    it("should keep plain CommonJS require when output format is CommonJS", () => {
+      const plugin = nativeFilePlugin() as Plugin;
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "production",
+        build: {
+          rollupOptions: {
+            output: {
+              format: "cjs",
+            },
+          },
+        },
+      });
+
+      const prebuildsDir = path.join(
+        tempDir,
+        "prebuilds",
+        `${platform}-${arch}`
+      );
+      fs.mkdirSync(prebuildsDir, { recursive: true });
+
+      fs.writeFileSync(
+        path.join(prebuildsDir, "binding.node"),
+        Buffer.from("native binding")
+      );
+
+      const jsFilePath = path.join(tempDir, "index.js");
+      const code = `const binding = require('node-gyp-build')(__dirname);`;
+
+      const context = { parse };
+      const result = (plugin.transform as any).call(context, code, jsFilePath);
+
+      expect(result).toBeDefined();
+      expect(result.code).toContain(".node\")");
+      expect(result.code).not.toContain(".node\").default");
+    });
+
     it("should handle napi.node files in prebuilds", () => {
       const plugin = nativeFilePlugin() as Plugin;
 
