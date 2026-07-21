@@ -132,7 +132,7 @@ export default function nativeFilePlugin(
 ): Plugin {
   const name = "plugin-native-modules";
   const nativeFiles = new Map<string, NativeFileInfo>();
-  const emittedFiles = new Set<string>();
+  const pendingEmittedFilesByOutput = new Map<string, Set<string>>();
   // Reverse mapping from hashed filename to original file path
   // Used to resolve transformed bindings/node-gyp-build calls
   const hashedFilenameToPath = new Map<string, string>();
@@ -140,7 +140,35 @@ export default function nativeFilePlugin(
   // This determines whether we generate ESM or CJS code in the load hook
   let outputFormat: "es" | "cjs" = "es"; // Default to ESM (Vite's default)
   let command: "build" | "serve" = "build";
-  let emptyOutDir: boolean | null = null;
+  let shouldEmptyOutDir = true;
+  let root = process.cwd();
+  let defaultOutDir = "dist";
+
+  function resolveOutputDirectory(outputOptions: {
+    dir?: string;
+    file?: string;
+  }): string {
+    if (outputOptions.dir) {
+      return path.resolve(root, outputOptions.dir);
+    }
+    if (outputOptions.file) {
+      return path.dirname(path.resolve(root, outputOptions.file));
+    }
+    return path.resolve(root, defaultOutDir);
+  }
+
+  function outputFileMatches(
+    outputDirectory: string,
+    info: NativeFileInfo
+  ): boolean {
+    try {
+      return fs
+        .readFileSync(path.join(outputDirectory, info.hashedFilename))
+        .equals(info.content);
+    } catch {
+      return false;
+    }
+  }
 
   // Helper function to detect if a file is an ES module based on extension and content
   function detectModuleType(fileId: string, code?: string): boolean {
@@ -581,9 +609,16 @@ export default function nativeFilePlugin(
   }
 
   return {
+    buildStart() {
+      // A pending emission belongs only to its current build attempt. If that
+      // build failed before the output write, the next watch build must try again.
+      pendingEmittedFilesByOutput.clear();
+    },
+
     configResolved(config) {
       command = config.command;
-      emptyOutDir = config.build?.emptyOutDir;
+      root = path.resolve(config.root ?? process.cwd());
+      defaultOutDir = config.build?.outDir ?? "dist";
 
       // Detect output format from Vite config
       // Priority: rollupOptions.output.format > lib.formats > default (es)
@@ -593,6 +628,28 @@ export default function nativeFilePlugin(
       // per output format. In practice, the ESM pattern (createRequire + import.meta.url)
       // works correctly in both ESM and CJS outputs because Rollup handles the conversion.
       const rollupOutput = config.build?.rollupOptions?.output;
+      const configuredOutputs = Array.isArray(rollupOutput)
+        ? rollupOutput
+        : [rollupOutput];
+      const allOutputsAreInsideRoot = configuredOutputs.every((output) => {
+        const outputDirectory = path.resolve(
+          root,
+          output?.dir ?? defaultOutDir
+        );
+        const relativeOutputDirectory = path.relative(root, outputDirectory);
+
+        return (
+          relativeOutputDirectory !== "" &&
+          relativeOutputDirectory !== ".." &&
+          !relativeOutputDirectory.startsWith(`..${path.sep}`) &&
+          !path.isAbsolute(relativeOutputDirectory)
+        );
+      });
+
+      // Vite defaults emptyOutDir to true only when every output is inside root.
+      shouldEmptyOutDir =
+        config.build?.emptyOutDir ?? allOutputsAreInsideRoot;
+
       if (rollupOutput) {
         // rollupOptions.output can be an object or array of objects
         const format = Array.isArray(rollupOutput)
@@ -615,7 +672,21 @@ export default function nativeFilePlugin(
       // Otherwise keep default 'es' (Vite's default for modern builds)
     },
 
-    generateBundle() {
+    generateBundle(outputOptions, _bundle, isWrite) {
+      const outputDirectory = resolveOutputDirectory(outputOptions);
+      const reuseWrittenAssets =
+        this.meta?.watchMode && isWrite && !shouldEmptyOutDir;
+      let pendingEmittedFiles =
+        pendingEmittedFilesByOutput.get(outputDirectory);
+
+      if (reuseWrittenAssets && !pendingEmittedFiles) {
+        pendingEmittedFiles = new Set<string>();
+        pendingEmittedFilesByOutput.set(
+          outputDirectory,
+          pendingEmittedFiles
+        );
+      }
+
       // Emit each .node file as an asset
       nativeFiles.forEach((info) => {
         // Only emit once in watch mode (and when emptyOutDir isn't deleting the files) because file
@@ -623,12 +694,12 @@ export default function nativeFilePlugin(
         // this even if the file content did change, because as it stands, the NativeFileInfo anyway
         // contains the previous file content (which is a separate issue, and less important because
         // addons are typically prebuilt meaning unlikely to change).
-        if (this.meta?.watchMode && emptyOutDir === false) {
-          if (emittedFiles.has(info.hashedFilename)) {
-            return;
-          } else {
-            emittedFiles.add(info.hashedFilename);
-          }
+        if (
+          reuseWrittenAssets &&
+          (pendingEmittedFiles?.has(info.hashedFilename) ||
+            outputFileMatches(outputDirectory, info))
+        ) {
+          return;
         }
 
         this.emitFile({
@@ -636,6 +707,10 @@ export default function nativeFilePlugin(
           source: info.content,
           type: "asset",
         });
+
+        if (reuseWrittenAssets) {
+          pendingEmittedFiles!.add(info.hashedFilename);
+        }
       });
     },
 
