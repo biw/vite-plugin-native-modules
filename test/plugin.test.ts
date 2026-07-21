@@ -827,11 +827,11 @@ describe("nativeFilePlugin", () => {
       );
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
-      
+
       // Should NOT have both module.exports and export default
       const hasModuleExports = loadResult.includes("module.exports");
       const hasExportDefault = loadResult.includes("export default");
-      
+
       if (hasExportDefault) {
         expect(hasModuleExports).toBe(false);
       }
@@ -839,6 +839,82 @@ describe("nativeFilePlugin", () => {
   });
 
   describe("Bundle Generation", () => {
+    const writeEmittedFiles = (outputDirectory: string, files: any[]) => {
+      fs.mkdirSync(outputDirectory, { recursive: true });
+      files.forEach((file) => {
+        fs.writeFileSync(path.join(outputDirectory, file.fileName), file.source);
+      });
+    };
+
+    const createWatchHarness = async ({
+      projectRoot = path.join(tempDir, "project"),
+      outputDirectory = path.join(projectRoot, "dist"),
+      emptyOutDir = false as boolean | null,
+      configuredOutDirs,
+    }: {
+      projectRoot?: string;
+      outputDirectory?: string;
+      emptyOutDir?: boolean | null;
+      configuredOutDirs?: string[];
+    } = {}) => {
+      const plugin = nativeFilePlugin() as Plugin;
+      const nodeFilePath = path.join(projectRoot, "watch.node");
+      const importerPath = path.join(projectRoot, "index.js");
+
+      fs.mkdirSync(projectRoot, { recursive: true });
+      fs.writeFileSync(nodeFilePath, Buffer.from("watch native module"));
+
+      (plugin.configResolved as any)({
+        command: "build",
+        mode: "development",
+        root: projectRoot,
+        build: {
+          emptyOutDir,
+          outDir: outputDirectory,
+          rollupOptions: configuredOutDirs
+            ? {
+                output: configuredOutDirs.map((dir) => ({ dir })),
+              }
+            : undefined,
+        },
+      });
+      await (plugin.resolveId as any).call(
+        {},
+        "./watch.node",
+        importerPath,
+        {}
+      );
+
+      const createContext = (emittedFiles: any[], watchMode = true) => ({
+        emitFile: (file: any) => {
+          emittedFiles.push(file);
+          return "mock-reference-id";
+        },
+        meta: { watchMode },
+      });
+      const startBuild = (context: any = {}) =>
+        (plugin.buildStart as any).call(context, {});
+      const generate = (
+        context: any,
+        output = outputDirectory,
+        isWrite = true
+      ) =>
+        (plugin.generateBundle as any).call(
+          context,
+          { dir: output },
+          {},
+          isWrite
+        );
+
+      return {
+        plugin,
+        outputDirectory,
+        createContext,
+        startBuild,
+        generate,
+      };
+    };
+
     it("should emit .node files during bundle generation", async () => {
       const plugin = nativeFilePlugin() as Plugin;
       const emittedFiles: any[] = [];
@@ -883,6 +959,228 @@ describe("nativeFilePlugin", () => {
       expect(emittedFiles[0].source).toBeDefined();
       expect(Buffer.isBuffer(emittedFiles[0].source)).toBe(true);
     });
+
+    it.each([
+      { watchMode: true, emptyOutDir: false, isWrite: true, expectedEmits: 1 },
+      { watchMode: true, emptyOutDir: true, isWrite: true, expectedEmits: 2 },
+      { watchMode: false, emptyOutDir: false, isWrite: true, expectedEmits: 2 },
+      { watchMode: true, emptyOutDir: false, isWrite: false, expectedEmits: 2 },
+    ])(
+      "should only suppress re-emits when watchMode=$watchMode, emptyOutDir=$emptyOutDir, and isWrite=$isWrite",
+      async ({ watchMode, emptyOutDir, isWrite, expectedEmits }) => {
+        const emittedFiles: any[] = [];
+        const harness = await createWatchHarness({ emptyOutDir });
+        const context = harness.createContext(emittedFiles, watchMode);
+
+        harness.startBuild(context);
+        harness.generate(context, harness.outputDirectory, isWrite);
+        expect(emittedFiles).toHaveLength(1);
+        if (isWrite) {
+          writeEmittedFiles(harness.outputDirectory, emittedFiles);
+        }
+
+        harness.startBuild(context);
+        harness.generate(context, harness.outputDirectory, isWrite);
+        expect(emittedFiles).toHaveLength(expectedEmits);
+      }
+    );
+
+    it("should emit once per output directory across watch rebuilds", async () => {
+      const harness = await createWatchHarness();
+      const outputDirectories = [
+        path.join(tempDir, "project", "dist-es"),
+        path.join(tempDir, "project", "dist-cjs"),
+      ];
+      const emissions = new Map<string, any[]>();
+
+      const generateFor = (outputDirectory: string) => {
+        const emittedFiles = emissions.get(outputDirectory) ?? [];
+        emissions.set(outputDirectory, emittedFiles);
+        const context = harness.createContext(emittedFiles);
+
+        harness.generate(context, outputDirectory);
+        writeEmittedFiles(outputDirectory, emittedFiles);
+      };
+
+      // Rollup invokes generateBundle once per output during the initial build.
+      harness.startBuild();
+      outputDirectories.forEach(generateFor);
+
+      expect(emissions.get(outputDirectories[0])).toHaveLength(1);
+      expect(emissions.get(outputDirectories[1])).toHaveLength(1);
+
+      // Subsequent watch builds should reuse each output's existing native file.
+      harness.startBuild();
+      outputDirectories.forEach(generateFor);
+
+      expect(emissions.get(outputDirectories[0])).toHaveLength(1);
+      expect(emissions.get(outputDirectories[1])).toHaveLength(1);
+    });
+
+    it("should retry native asset emission after a failed watch build", async () => {
+      const harness = await createWatchHarness();
+      const emittedFiles: any[] = [];
+      const context = harness.createContext(emittedFiles);
+
+      // Simulate a build that fails after generateBundle but before output write.
+      harness.startBuild(context);
+      harness.generate(context);
+      expect(emittedFiles).toHaveLength(1);
+
+      // The recovery build must schedule the asset again.
+      harness.startBuild(context);
+      harness.generate(context);
+      expect(emittedFiles).toHaveLength(2);
+      writeEmittedFiles(harness.outputDirectory, emittedFiles.slice(-1));
+
+      // Once a write succeeds, later rebuilds can reuse the on-disk asset.
+      harness.startBuild(context);
+      harness.generate(context);
+      expect(emittedFiles).toHaveLength(2);
+    });
+
+    it("should retry when a same-directory sibling output succeeds without the asset", async () => {
+      const harness = await createWatchHarness();
+      const emissions = [[], [], []] as any[][];
+      const contexts = emissions.map((files) => harness.createContext(files));
+
+      harness.startBuild(contexts[0]);
+      harness.generate(contexts[0]);
+      harness.generate(contexts[1]);
+
+      expect(emissions[0]).toHaveLength(1);
+      expect(emissions[1]).toHaveLength(0);
+
+      // The output that scheduled the asset fails, while its sibling completes.
+      (harness.plugin.writeBundle as any)?.call(
+        contexts[1],
+        { dir: harness.outputDirectory },
+        {}
+      );
+
+      harness.startBuild(contexts[2]);
+      harness.generate(contexts[2]);
+
+      expect(emissions[2]).toHaveLength(1);
+    });
+
+    it("should re-emit a native asset removed between watch builds", async () => {
+      const harness = await createWatchHarness();
+      const emittedFiles: any[] = [];
+      const context = harness.createContext(emittedFiles);
+
+      harness.startBuild(context);
+      harness.generate(context);
+      writeEmittedFiles(harness.outputDirectory, emittedFiles);
+
+      harness.startBuild(context);
+      harness.generate(context);
+      expect(emittedFiles).toHaveLength(1);
+
+      fs.rmSync(
+        path.join(harness.outputDirectory, emittedFiles[0].fileName)
+      );
+
+      harness.startBuild(context);
+      harness.generate(context);
+      expect(emittedFiles).toHaveLength(2);
+    });
+
+    it.each([
+      {
+        condition: "truncated",
+        corrupt: (source: Buffer) => source.subarray(0, source.length - 1),
+      },
+      {
+        condition: "same-size corrupt",
+        corrupt: (source: Buffer) => Buffer.alloc(source.length),
+      },
+    ])(
+      "should replace a $condition native asset on the next watch build",
+      async ({ corrupt }) => {
+        const harness = await createWatchHarness();
+        const emittedFiles: any[] = [];
+        const context = harness.createContext(emittedFiles);
+
+        harness.startBuild(context);
+        harness.generate(context);
+        expect(emittedFiles).toHaveLength(1);
+
+        const emittedFile = emittedFiles[0];
+        fs.mkdirSync(harness.outputDirectory, { recursive: true });
+        fs.writeFileSync(
+          path.join(harness.outputDirectory, emittedFile.fileName),
+          corrupt(emittedFile.source)
+        );
+
+        harness.startBuild(context);
+        harness.generate(context);
+        expect(emittedFiles).toHaveLength(2);
+      }
+    );
+
+    it("should reuse an existing native asset after watcher restart", async () => {
+      const firstEmissions: any[] = [];
+      const firstWatcher = await createWatchHarness();
+      const firstContext = firstWatcher.createContext(firstEmissions);
+
+      firstWatcher.startBuild(firstContext);
+      firstWatcher.generate(firstContext);
+      writeEmittedFiles(firstWatcher.outputDirectory, firstEmissions);
+
+      const restartedEmissions: any[] = [];
+      const restartedWatcher = await createWatchHarness();
+      const restartedContext =
+        restartedWatcher.createContext(restartedEmissions);
+
+      restartedWatcher.startBuild(restartedContext);
+      restartedWatcher.generate(restartedContext);
+
+      expect(restartedEmissions).toHaveLength(0);
+    });
+
+    it.each([
+      {
+        location: "inside the project root",
+        relativeOutDir: "dist",
+        expectedEmits: 2,
+      },
+      {
+        location: "outside the project root",
+        relativeOutDir: "../dist-outside-root",
+        expectedEmits: 1,
+      },
+      {
+        location: "inside root when another output is outside root",
+        relativeOutDir: "dist",
+        configuredOutDirs: ["dist", "../dist-outside-root"],
+        expectedEmits: 1,
+      },
+    ])(
+      "should follow Vite's emptyOutDir default for output $location",
+      async ({ relativeOutDir, configuredOutDirs, expectedEmits }) => {
+        const projectRoot = path.join(tempDir, "project");
+        const outputDirectory = path.resolve(projectRoot, relativeOutDir);
+        const emittedFiles: any[] = [];
+        const harness = await createWatchHarness({
+          projectRoot,
+          outputDirectory,
+          emptyOutDir: null,
+          configuredOutDirs,
+        });
+        const context = harness.createContext(emittedFiles);
+
+        // Vite exposes null in configResolved, then treats it as true only
+        // when every configured output is inside the project root.
+        harness.startBuild(context);
+        harness.generate(context);
+        writeEmittedFiles(outputDirectory, emittedFiles);
+        harness.startBuild(context);
+        harness.generate(context);
+
+        expect(emittedFiles).toHaveLength(expectedEmits);
+      }
+    );
   });
 
   describe("Filename Format Options", () => {
