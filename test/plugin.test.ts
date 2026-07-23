@@ -1285,5 +1285,61 @@ describe("nativeFilePlugin", () => {
       expect(emittedFiles.length).toBeGreaterThan(0);
       expect(emittedFiles[0].fileName).toMatch(/native-[A-F0-9]{8}\.node/);
     });
+
+    it("should emit identical hash-only native files once", async () => {
+      const emittedFiles: any[] = [];
+      const plugin = nativeFilePlugin({ filenameFormat: "hash-only" }) as Plugin;
+      (plugin.configResolved as any)({ command: "build", mode: "production" });
+
+      const firstNativeFile = path.join(tempDir, "first.node");
+      const secondNativeFile = path.join(tempDir, "second.node");
+      const content = Buffer.from("shared native binary");
+      fs.writeFileSync(firstNativeFile, content);
+      fs.writeFileSync(secondNativeFile, content);
+
+      const importerPath = path.join(tempDir, "index.js");
+      await (plugin.resolveId as any).call({}, "./first.node", importerPath, {});
+      await (plugin.resolveId as any).call({}, "./second.node", importerPath, {});
+
+      const mockContext = {
+        emitFile: (file: any) => {
+          emittedFiles.push(file);
+          return "mock-reference-id";
+        },
+      };
+      (plugin.generateBundle as any).call(mockContext, {}, {}, false);
+
+      expect(emittedFiles).toHaveLength(1);
+      expect(emittedFiles[0].source).toEqual(content);
+    });
+
+    it("should reject an output-name collision with different contents", async () => {
+      const plugin = nativeFilePlugin({ filenameFormat: "hash-only" }) as Plugin;
+      (plugin.configResolved as any)({ command: "build", mode: "production" });
+
+      // These distinct strings share the same first eight MD5 hex characters,
+      // which is the hash length used in emitted native filenames.
+      const firstContent = Buffer.from("collision-83147");
+      const secondContent = Buffer.from("collision-143822");
+      expect(crypto.createHash("md5").update(firstContent).digest("hex").slice(0, 8)).toBe(
+        crypto.createHash("md5").update(secondContent).digest("hex").slice(0, 8)
+      );
+
+      fs.writeFileSync(path.join(tempDir, "first.node"), firstContent);
+      fs.writeFileSync(path.join(tempDir, "second.node"), secondContent);
+      const importerPath = path.join(tempDir, "index.js");
+      await (plugin.resolveId as any).call({}, "./first.node", importerPath, {});
+      await (plugin.resolveId as any).call({}, "./second.node", importerPath, {});
+
+      const mockContext = {
+        emitFile: () => "mock-reference-id",
+      };
+
+      expect(() =>
+        (plugin.generateBundle as any).call(mockContext, {}, {}, false)
+      ).toThrow(
+        "Native files produced the same output name with different contents: 94141742.node"
+      );
+    });
   });
 });

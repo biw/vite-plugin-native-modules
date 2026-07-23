@@ -705,6 +705,7 @@ export default function nativeFilePlugin(
 
     generateBundle(outputOptions, _bundle, isWrite) {
       const outputDirectory = resolveOutputDirectory(outputOptions);
+      const nativeFilesByOutputName = new Map<string, NativeFileInfo>();
       const reuseWrittenAssets =
         this.meta?.watchMode && isWrite && !shouldEmptyOutDir;
       let pendingEmittedFiles =
@@ -720,6 +721,17 @@ export default function nativeFilePlugin(
 
       // Emit each .node file as an asset
       nativeFiles.forEach((info) => {
+        const existingInfo = nativeFilesByOutputName.get(info.hashedFilename);
+        if (existingInfo) {
+          if (!existingInfo.content.equals(info.content)) {
+            throw new Error(
+              `Native files produced the same output name with different contents: ${info.hashedFilename}`
+            );
+          }
+          return;
+        }
+        nativeFilesByOutputName.set(info.hashedFilename, info);
+
         // Only emit once in watch mode (and when emptyOutDir isn't deleting the files) because file
         // writes may fail if the file is already in use by a running app, especially on Windows. Do
         // this even if the file content did change, because as it stands, the NativeFileInfo anyway
