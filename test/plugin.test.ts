@@ -801,8 +801,9 @@ describe("nativeFilePlugin", () => {
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
 
-      // CJS output format should generate CommonJS syntax
-      expect(loadResult).toContain("module.exports");
+      // Rollup input remains ESM so syntheticNamedExports has a concrete default export.
+      // Rollup lowers this wrapper to CommonJS in the generated output.
+      expect(loadResult).toContain("export default nativeModule");
       expect(loadResult).toContain("require(");
       expect(loadResult).not.toContain("import { createRequire }");
       expect(loadResult).not.toContain("import.meta.url");
