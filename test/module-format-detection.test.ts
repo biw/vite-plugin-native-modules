@@ -545,7 +545,7 @@ const binding = nodeGypBuild(__dirname);`;
   });
 
   describe("Regular .node imports - explicit CJS output format", () => {
-    it("should generate CommonJS code when output format is explicitly CJS", async () => {
+    it("should generate a Rollup-compatible native wrapper for CJS output", async () => {
       const plugin = nativeFilePlugin() as Plugin;
       // Explicit CJS output format via rollupOptions
       (plugin.configResolved as any)({
@@ -577,11 +577,12 @@ const binding = nodeGypBuild(__dirname);`;
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
 
-      // CJS output format should generate CommonJS syntax
-      expect(loadResult).toContain("module.exports");
+      // The native load uses require(), but the virtual Rollup module keeps a
+      // concrete default export for syntheticNamedExports.
+      expect(loadResult).not.toContain("module.exports");
       expect(loadResult).toContain("require(");
       expect(loadResult).not.toContain("import { createRequire }");
-      expect(loadResult).not.toContain("export default");
+      expect(loadResult).toContain("export default nativeModule");
       expect(loadResult).not.toContain("import.meta.url");
     });
   });
@@ -615,7 +616,7 @@ const binding = nodeGypBuild(__dirname);`;
       expect(loadResult).not.toContain("module.exports");
     });
 
-    it("should not mix CJS module.exports with ESM export default (explicit CJS output)", async () => {
+    it("should retain a default export for explicit CJS output", async () => {
       const plugin = nativeFilePlugin() as Plugin;
       // Explicit CJS output format
       (plugin.configResolved as any)({
@@ -643,12 +644,12 @@ const binding = nodeGypBuild(__dirname);`;
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
 
-      // CJS output should use CJS pattern
-      expect(loadResult).toContain("module.exports");
+      // Rollup lowers this ESM-shaped input wrapper to CommonJS output.
+      expect(loadResult).not.toContain("module.exports");
       expect(loadResult).toContain("require(");
-      // Should NOT have ESM features (incompatible with CJS)
+      // The wrapper avoids runtime-only ESM features that cannot survive CJS output.
       expect(loadResult).not.toContain("import.meta.url");
-      expect(loadResult).not.toContain("export default");
+      expect(loadResult).toContain("export default nativeModule");
     });
 
     it("ESM output should use createRequire pattern (require + import.meta.url is valid)", async () => {

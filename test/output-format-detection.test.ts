@@ -488,6 +488,9 @@ export { addon };
         const result = await build({
           root: tempDir,
           logLevel: "silent",
+          ssr: {
+            noExternal: true,
+          },
           build: {
             write: false,
             ssr: true, // Target Node.js, not browser
@@ -522,6 +525,7 @@ export { addon };
 
       // The output should use CJS syntax
       expect(mainChunk!.code).toMatch(/require\(/);
+      expect(mainChunk!.code).toMatch(/[A-F0-9]{8}\.node/);
     });
   });
 
@@ -568,11 +572,11 @@ module.exports = require('node-gyp-build')(__dirname);
       );
 
       // Create entry
-      const entryPath = path.join(tempDir, "index.js");
+      const entryPath = path.join(tempDir, "index.mjs");
       fs.writeFileSync(
         entryPath,
-        `const addon = require('native-addon');
-module.exports = { addon };
+        `import addon from 'native-addon';
+export default addon;
 `
       );
 
@@ -584,6 +588,9 @@ module.exports = { addon };
         const result = await build({
           root: tempDir,
           logLevel: "silent",
+          ssr: {
+            noExternal: true,
+          },
           build: {
             write: false,
             ssr: true, // Target Node.js, not browser
@@ -613,6 +620,61 @@ module.exports = { addon };
 
       // The output should NOT contain import.meta.url (doesn't work in CJS)
       expect(mainChunk!.code).not.toContain("import.meta.url");
+      expect(mainChunk!.code).toMatch(/[A-F0-9]{8}\.node/);
+    });
+
+    it("should use an output-agnostic wrapper for CJS-first mixed formats", async () => {
+      const nativePath = path.join(tempDir, "addon.node");
+      const entryPath = path.join(tempDir, "index.mjs");
+      fs.writeFileSync(nativePath, Buffer.from("fake native module"));
+      fs.writeFileSync(
+        entryPath,
+        `import addon from "./addon.node";
+export default addon;
+`
+      );
+
+      const plugin = nativeFilePlugin({ forced: true });
+      plugin.enforce = "pre";
+
+      const result = await build({
+        root: tempDir,
+        logLevel: "silent",
+        build: {
+          write: false,
+          ssr: true,
+          lib: {
+            entry: entryPath,
+            formats: ["cjs", "es"],
+            fileName: (format) => `index.${format}`,
+          },
+        },
+        plugins: [plugin],
+      });
+      const buildOutputs = result as
+        | Rollup.RollupOutput
+        | Rollup.RollupOutput[];
+      const outputs = Array.isArray(buildOutputs)
+        ? buildOutputs
+        : [buildOutputs];
+      const chunks = outputs.flatMap((output) =>
+        output.output.filter(
+          (item): item is Rollup.OutputChunk => item.type === "chunk"
+        )
+      );
+      const cjsChunk = chunks.find((chunk) =>
+        chunk.code.startsWith('"use strict"')
+      );
+      const esmChunk = chunks.find((chunk) =>
+        chunk.code.includes("export {")
+      );
+
+      expect(cjsChunk).toBeDefined();
+      expect(cjsChunk!.code).toMatch(/[A-F0-9]{8}\.node/);
+      expect(esmChunk).toBeDefined();
+      expect(esmChunk!.code).toContain("createRequire");
+      expect(esmChunk!.code).toContain("import.meta.url");
+      expect(esmChunk!.code).toMatch(/[A-F0-9]{8}\.node/);
     });
   });
 });

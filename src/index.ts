@@ -651,13 +651,11 @@ export default function nativeFilePlugin(
       requireReturnsDefault =
         config.build?.commonjsOptions?.requireReturnsDefault;
 
-      // Detect output format from Vite config
-      // Priority: rollupOptions.output.format > lib.formats > default (es)
-      //
-      // LIMITATION: For multi-format builds (e.g., lib.formats: ['es', 'cjs']), this
-      // only uses the first format. Rollup's load hook is called once per module, not
-      // per output format. In practice, the ESM pattern (createRequire + import.meta.url)
-      // works correctly in both ESM and CJS outputs because Rollup handles the conversion.
+      // Detect the wrapper format from Vite config.
+      // Priority: rollupOptions.output.format > lib.formats > default (es).
+      // Rollup's load hook is called once per module rather than once per output,
+      // so mixed-format builds must use the ESM wrapper. Rollup can lower that
+      // wrapper to CommonJS while keeping createRequire() for ESM output.
       const rollupOutput = config.build?.rollupOptions?.output;
       const configuredOutputs = Array.isArray(rollupOutput)
         ? rollupOutput
@@ -683,21 +681,23 @@ export default function nativeFilePlugin(
 
       if (rollupOutput) {
         // rollupOptions.output can be an object or array of objects
-        const format = Array.isArray(rollupOutput)
-          ? rollupOutput[0]?.format
-          : rollupOutput.format;
-        if (format === "cjs" || format === "commonjs") {
-          outputFormat = "cjs";
-        } else {
-          outputFormat = "es";
-        }
+        const formats = Array.isArray(rollupOutput)
+          ? rollupOutput.map((output) => output?.format)
+          : [rollupOutput.format];
+        outputFormat = formats.every(
+          (format) => format === "cjs" || format === "commonjs"
+        )
+          ? "cjs"
+          : "es";
       } else if (config.build?.lib) {
-        // lib mode - use first format
+        // lib mode
         // lib can be false or LibraryOptions, check for formats property
         const lib = config.build.lib;
         if (typeof lib === "object" && lib.formats) {
           const formats = lib.formats;
-          outputFormat = formats[0] === "cjs" ? "cjs" : "es";
+          outputFormat = formats.every((format) => format === "cjs")
+            ? "cjs"
+            : "es";
         }
       }
       // Otherwise keep default 'es' (Vite's default for modern builds)
@@ -773,8 +773,9 @@ export default function nativeFilePlugin(
       // This is important because:
       // 1. Using CJS require() in an ESM output causes "Cannot determine intended
       //    module format because both require() and top-level await are present"
-      // 2. Using import.meta.url in a CJS output doesn't work
-      // 3. The output format is what matters for the final bundled code
+      // 2. CJS-only builds can use a compact raw require(), while mixed builds
+      //    need the ESM wrapper that Rollup can lower for their CJS output
+      // 3. The configured output formats matter more than the importer's format
       if (outputFormat === "es") {
         return `
 import { createRequire } from 'node:module';
@@ -785,7 +786,9 @@ export default nativeModule;
 `;
       } else {
         return `
-module.exports = require('./${info.hashedFilename}');
+const nativeModule = require('./${info.hashedFilename}');
+${isRequireWrapper ? "export const __vitePluginNativeModule = true;" : ""}
+export default nativeModule;
 `;
       }
     },

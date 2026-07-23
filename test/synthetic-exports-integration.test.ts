@@ -1,9 +1,24 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import nativeFilePlugin from "../src/index.js";
-import { build } from "vite";
+import { build, type Rollup } from "vite";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+
+function expectNativeModuleBundled(
+  result: Rollup.RollupOutput | Rollup.RollupOutput[]
+): void {
+  const outputs = Array.isArray(result) ? result : [result];
+  const generated = outputs.flatMap((output) => output.output);
+
+  expect(
+    generated.some(
+      (item) =>
+        item.type === "chunk" &&
+        /[A-F0-9]{8}\.node/.test(item.code)
+    )
+  ).toBe(true);
+}
 
 /**
  * Integration tests for syntheticNamedExports handling.
@@ -32,6 +47,39 @@ describe("syntheticNamedExports integration", () => {
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("keeps a native default import available in CommonJS output", async () => {
+    const nativePath = path.join(tempDir, "addon.node");
+    const entryPath = path.join(tempDir, "index.js");
+    const plugin = nativeFilePlugin({ forced: true });
+    // Isolate the plugin's virtual wrapper from Vite's generic asset resolver.
+    plugin.enforce = "pre";
+    fs.writeFileSync(nativePath, Buffer.from("fake native module"));
+    fs.writeFileSync(
+      entryPath,
+      `import addon from "./addon.node";\nconsole.log(addon);\n`
+    );
+
+    const result = await build({
+      root: tempDir,
+      logLevel: "silent",
+      build: {
+        ssr: true,
+        write: false,
+        rollupOptions: {
+          input: entryPath,
+          output: {
+            format: "cjs",
+          },
+        },
+      },
+      plugins: [plugin],
+    });
+
+    expectNativeModuleBundled(
+      result as Rollup.RollupOutput | Rollup.RollupOutput[]
+    );
   });
 
   describe("bufferutil-style pattern (node-gyp-build)", () => {
@@ -99,40 +147,33 @@ try {
       const entryPath = path.join(tempDir, "index.js");
       fs.writeFileSync(
         entryPath,
-        `const bufferutil = require('bufferutil');
-console.log(bufferutil);
+        `import { mask } from 'bufferutil';
+console.log(mask);
 `
       );
 
-      // Run Vite build
-      let buildError: Error | null = null;
-      try {
-        await build({
-          root: tempDir,
-          logLevel: "silent",
-          build: {
-            write: false,
-            rollupOptions: {
-              input: entryPath,
-            },
-            lib: {
-              entry: entryPath,
-              formats: ["cjs"],
+      const result = await build({
+        root: tempDir,
+        logLevel: "silent",
+        ssr: {
+          noExternal: true,
+        },
+        build: {
+          ssr: true,
+          write: false,
+          rollupOptions: {
+            input: entryPath,
+            output: {
+              format: "cjs",
             },
           },
-          plugins: [nativeFilePlugin({ forced: true })],
-        });
-      } catch (err) {
-        buildError = err as Error;
-      }
+        },
+        plugins: [nativeFilePlugin({ forced: true })],
+      });
 
-      // The build should succeed without the syntheticNamedExports error
-      if (buildError) {
-        expect(buildError.message).not.toContain("syntheticNamedExports");
-        expect(buildError.message).not.toContain(
-          "needs a default export that does not reexport"
-        );
-      }
+      expectNativeModuleBundled(
+        result as Rollup.RollupOutput | Rollup.RollupOutput[]
+      );
     });
 
     /**
@@ -216,40 +257,34 @@ console.log(addon);
 `
       );
 
-      let buildError: Error | null = null;
-      try {
-        await build({
-          root: tempDir,
-          logLevel: "silent",
-          build: {
-            write: false,
-            rollupOptions: {
-              input: entryPath,
-            },
-            lib: {
-              entry: entryPath,
-              formats: ["es"],
+      const result = await build({
+        root: tempDir,
+        logLevel: "silent",
+        ssr: {
+          noExternal: true,
+        },
+        build: {
+          ssr: true,
+          write: false,
+          rollupOptions: {
+            input: entryPath,
+            output: {
+              format: "es",
             },
           },
-          plugins: [nativeFilePlugin({ forced: true })],
-        });
-      } catch (err) {
-        buildError = err as Error;
-      }
+        },
+        plugins: [nativeFilePlugin({ forced: true })],
+      });
 
-      if (buildError) {
-        // Check it's not the syntheticNamedExports error
-        expect(buildError.message).not.toContain("syntheticNamedExports");
-        expect(buildError.message).not.toContain(
-          "needs a default export that does not reexport"
-        );
-      }
+      expectNativeModuleBundled(
+        result as Rollup.RollupOutput | Rollup.RollupOutput[]
+      );
     });
 
     /**
-     * Test with named import destructuring pattern
+     * Test with synthetic named imports
      */
-    it("should build successfully with named import destructuring from native module", async () => {
+    it("should build successfully with named imports from a native module", async () => {
       const platform = process.platform;
       const arch = process.arch;
 
@@ -296,42 +331,37 @@ try {
 };`
       );
 
-      // Entry point with destructuring
-      const entryPath = path.join(tempDir, "index.js");
+      // Entry point with synthetic named imports
+      const entryPath = path.join(tempDir, "index.mjs");
       fs.writeFileSync(
         entryPath,
-        `const { foo, bar } = require('my-native');
+        `import { foo, bar } from 'my-native';
 console.log(foo, bar);
 `
       );
 
-      let buildError: Error | null = null;
-      try {
-        await build({
-          root: tempDir,
-          logLevel: "silent",
-          build: {
-            write: false,
-            rollupOptions: {
-              input: entryPath,
-            },
-            lib: {
-              entry: entryPath,
-              formats: ["cjs"],
+      const result = await build({
+        root: tempDir,
+        logLevel: "silent",
+        ssr: {
+          noExternal: true,
+        },
+        build: {
+          ssr: true,
+          write: false,
+          rollupOptions: {
+            input: entryPath,
+            output: {
+              format: "cjs",
             },
           },
-          plugins: [nativeFilePlugin({ forced: true })],
-        });
-      } catch (err) {
-        buildError = err as Error;
-      }
+        },
+        plugins: [nativeFilePlugin({ forced: true })],
+      });
 
-      if (buildError) {
-        expect(buildError.message).not.toContain("syntheticNamedExports");
-        expect(buildError.message).not.toContain(
-          "needs a default export that does not reexport"
-        );
-      }
+      expectNativeModuleBundled(
+        result as Rollup.RollupOutput | Rollup.RollupOutput[]
+      );
     });
   });
 });
