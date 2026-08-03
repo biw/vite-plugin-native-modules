@@ -5,7 +5,7 @@
       "source": "biw/skills",
       "sourceType": "github",
       "skillPath": "skills/address-review-bots/SKILL.md",
-      "computedHash": "11b729b395036cad7557f8f3a2a8c8997ddd1fbe43733d65904958d0e80f73dd"
+      "computedHash": "43427484a7e45a333b739462fdfee8c1c85c7013baee32b1135344c7a241753c"
     },
     "better-logging": {
       "source": "biw/skills",
@@ -17,19 +17,19 @@
       "source": "biw/skills",
       "sourceType": "github",
       "skillPath": "skills/conductor-setup/SKILL.md",
-      "computedHash": "442a67a9db20f97421ea0afe8e2627915e730feb2fb0ca57ca55425af039a812"
+      "computedHash": "722fa45163cba78ebcf7af0d6ded4dc92848073098db16c1b65702a6f420f3ea"
     },
     "detailed-pr-description": {
       "source": "biw/skills",
       "sourceType": "github",
       "skillPath": "skills/detailed-pr-description/SKILL.md",
-      "computedHash": "0ceda07220c6737b22f6feeb4627c22fea45de7d48e42490b0caeac2b37c420c"
+      "computedHash": "19064fd3e68cd67f7b9d560ecd17b27395cc66d977b48334eb76ee0f18824e96"
     },
     "review-fix-address-bots": {
       "source": "biw/skills",
       "sourceType": "github",
       "skillPath": "skills/review-fix-address-bots/SKILL.md",
-      "computedHash": "20839a260398b2f6f7f725adbca7b44fd2c2ab20f772cb682375a8f766a2547a"
+      "computedHash": "d89d16df6bc5fa3d96624076d7a2f4a89959b711211389184da31972e29d0a54"
     }
   }
 }

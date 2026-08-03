@@ -19,6 +19,68 @@ import { fileURLToPath } from 'node:url'
 
 export const SCHEMA_VERSION = 1
 
+export const LOG_TEMPLATES = Object.freeze({
+  configuration: Object.freeze({
+    requestedReviewerCount: 3,
+    reviewerCohortRequested: Object.freeze([
+      Object.freeze({ model: 'gpt-5.6-sol', count: 1 }),
+      Object.freeze({ model: 'gpt-5.6-terra', count: 1 }),
+      Object.freeze({ model: 'gpt-5.6-luna', count: 1 }),
+    ]),
+    reasoningRequested: 'high',
+    remediationRoundLimit: 3,
+    reviewBotLoopLimit: 8,
+  }),
+  events: Object.freeze({
+    targetIntegrated: Object.freeze({
+      event: 'target_integrated',
+      data: Object.freeze({
+        targetRef: '<target-remote>/<target-branch>',
+        targetSha: '<sha>',
+        method: 'already_current',
+      }),
+    }),
+    reviewerSessionStarted: Object.freeze({
+      event: 'reviewer_session_started',
+      data: Object.freeze({
+        reviewerId: 'sol-1',
+        launchMechanism: 'native',
+        sessionId: '<session-id>',
+        modelRequested: 'gpt-5.6-sol',
+        modelApplied: 'gpt-5.6-sol',
+        reasoningRequested: 'high',
+        reasoningApplied: 'high',
+      }),
+    }),
+    initialPass: Object.freeze({
+      event: 'reviewer_pass_completed',
+      data: Object.freeze({ reviewerId: 'sol-1', round: 1, findingIds: ['F1'], tokenUsage: null }),
+    }),
+    continuity: Object.freeze({
+      event: 'reviewer_continuity_verified',
+      data: Object.freeze({ reviewerId: 'sol-1', round: 1, verified: true, tokenUsage: null }),
+    }),
+    remediationPass: Object.freeze({
+      event: 'remediation_reviewer_pass_completed',
+      data: Object.freeze({ reviewerId: 'sol-1', round: 1, findingIds: [], tokenUsage: null }),
+    }),
+    findingResolved: Object.freeze({
+      event: 'finding_resolved',
+      data: Object.freeze({
+        findingId: 'F1',
+        classification: 'valid',
+        reportedBy: Object.freeze(['sol-1']),
+        action: 'fixed',
+      }),
+    }),
+  }),
+  finishSummary: Object.freeze({
+    status: 'complete',
+    githubReviewBots: Object.freeze([]),
+    reviewBotLoopCount: 0,
+  }),
+})
+
 export const PRICING_SNAPSHOT = Object.freeze({
   currency: 'USD',
   serviceTier: 'standard',
@@ -478,6 +540,156 @@ const invocationsFor = (reviewer) => {
   return [...rounds, ...continuityChecks]
 }
 
+const stringArray = (value) =>
+  Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item.length > 0) : []
+
+const canonicalReviewerId = (value) =>
+  typeof value?.reviewerId === 'string'
+    ? value.reviewerId
+    : typeof value?.reviewer === 'string'
+      ? value.reviewer
+      : null
+
+const canonicalFinding = (finding) => {
+  if (!finding || typeof finding !== 'object' || Array.isArray(finding)) return null
+  const findingId =
+    typeof finding.findingId === 'string'
+      ? finding.findingId
+      : typeof finding.id === 'string'
+        ? finding.id
+        : null
+  return findingId ? { ...finding, findingId } : null
+}
+
+export const canonicalSummaryFromEvents = (events, summary) => {
+  const suppliedReviewers = Array.isArray(summary.reviewers) ? summary.reviewers : []
+  const reviewerById = new Map()
+
+  for (const reviewer of suppliedReviewers) {
+    const reviewerId = canonicalReviewerId(reviewer)
+    if (!reviewerId) continue
+    reviewerById.set(reviewerId, {
+      ...reviewer,
+      reviewerId,
+      continuityChecks: Array.isArray(reviewer.continuityChecks) ? [...reviewer.continuityChecks] : [],
+      rounds: Array.isArray(reviewer.rounds) ? [...reviewer.rounds] : [],
+      ...(reviewer.modelApplied === undefined && typeof reviewer.model === 'string'
+        ? { modelApplied: reviewer.model }
+        : {}),
+      ...(reviewer.reasoningApplied === undefined && typeof reviewer.reasoning === 'string'
+        ? { reasoningApplied: reviewer.reasoning }
+        : {}),
+    })
+  }
+
+  const ensureReviewer = (reviewerId) => {
+    const existing = reviewerById.get(reviewerId)
+    if (existing) return existing
+    const reviewer = { reviewerId, continuityChecks: [], rounds: [] }
+    reviewerById.set(reviewerId, reviewer)
+    return reviewer
+  }
+
+  const addRound = (reviewer, round) => {
+    const exists = reviewer.rounds.some(
+      (entry) => entry.phase === round.phase && entry.round === round.round,
+    )
+    if (!exists) reviewer.rounds.push(round)
+  }
+
+  for (const event of events) {
+    const data = event.data || {}
+    const reviewerId = canonicalReviewerId(data)
+    if (!reviewerId) continue
+    const reviewer = ensureReviewer(reviewerId)
+
+    if (event.event === 'reviewer_session_started') {
+      Object.assign(reviewer, {
+        ...(typeof data.launchMechanism === 'string' ? { launchMechanism: data.launchMechanism } : {}),
+        ...(typeof data.sessionId === 'string' ? { sessionId: data.sessionId } : {}),
+        ...(typeof data.modelRequested === 'string' ? { modelRequested: data.modelRequested } : {}),
+        ...(typeof data.modelApplied === 'string' ? { modelApplied: data.modelApplied } : {}),
+        ...(typeof data.reasoningRequested === 'string'
+          ? { reasoningRequested: data.reasoningRequested }
+          : {}),
+        ...(typeof data.reasoningApplied === 'string' ? { reasoningApplied: data.reasoningApplied } : {}),
+      })
+      continue
+    }
+
+    if (event.event === 'reviewer_pass_completed' || event.event === 'remediation_reviewer_pass_completed') {
+      addRound(reviewer, {
+        phase: event.event === 'reviewer_pass_completed' ? 'initial' : 'remediation',
+        round: typeof data.round === 'number' ? data.round : 1,
+        findingIds: stringArray(data.findingIds ?? data.finding_ids),
+        tokenUsage: data.tokenUsage ?? null,
+      })
+      continue
+    }
+
+    if (event.event === 'reviewer_continuity_verified') {
+      reviewer.continuityVerified = true
+      const round = typeof data.round === 'number' ? data.round : 1
+      if (!reviewer.continuityChecks.some((entry) => entry.round === round)) {
+        reviewer.continuityChecks.push({ round, verified: true, tokenUsage: data.tokenUsage ?? null })
+      }
+    }
+  }
+
+  const findingsById = new Map()
+  for (const finding of Array.isArray(summary.findings) ? summary.findings : []) {
+    const canonical = canonicalFinding(finding)
+    if (canonical) findingsById.set(canonical.findingId, canonical)
+  }
+  for (const event of events) {
+    if (event.event !== 'finding_resolved') continue
+    const finding = canonicalFinding({
+      ...event.data,
+      findingId: event.data?.findingId ?? event.data?.finding_id,
+      reportedBy: event.data?.reportedBy ?? event.data?.reporters,
+      action: event.data?.action ?? 'fixed',
+    })
+    if (finding && !findingsById.has(finding.findingId)) findingsById.set(finding.findingId, finding)
+  }
+
+  return {
+    ...summary,
+    reviewers: [...reviewerById.values()].sort((left, right) =>
+      left.reviewerId.localeCompare(right.reviewerId),
+    ),
+    findings: [...findingsById.values()],
+  }
+}
+
+export const validateFinishSummary = (summary) => {
+  const reviewers = Array.isArray(summary.reviewers) ? summary.reviewers : []
+  if (reviewers.length === 0) fail('finish summary must include at least one reviewer')
+
+  for (const reviewer of reviewers) {
+    const requiredFields = [
+      'reviewerId',
+      'launchMechanism',
+      'sessionId',
+      'modelRequested',
+      'modelApplied',
+      'reasoningRequested',
+      'reasoningApplied',
+    ]
+    const missing = requiredFields.filter(
+      (field) => typeof reviewer[field] !== 'string' || reviewer[field].length === 0,
+    )
+    if (missing.length > 0) {
+      fail(`finish summary reviewer ${reviewer.reviewerId || '<unknown>'} is missing ${missing.join(', ')}`)
+    }
+    if (!Array.isArray(reviewer.rounds) || reviewer.rounds.length === 0) {
+      fail(`finish summary reviewer ${reviewer.reviewerId} has no recorded review rounds`)
+    }
+    if (!Array.isArray(reviewer.continuityChecks) || reviewer.continuityChecks.length === 0) {
+      fail(`finish summary reviewer ${reviewer.reviewerId} has no continuity check`)
+    }
+  }
+}
+
 const tokenMetrics = (reviewers, phase) => {
   const fields = ['inputTokens', 'cachedInputTokens', 'outputTokens', 'reasoningOutputTokens', 'totalTokens']
   const totals = Object.fromEntries(fields.map((field) => [field, 0]))
@@ -774,11 +986,12 @@ export const finishRun = ({ logPath, summary = {}, timestamp, collectCodexUsage 
   assertObject(summary, 'summary')
   const { events, runId } = runIdentity(logPath)
   if (events.some((item) => item.event === 'run_finished')) fail(`Run is already finished: ${logPath}`)
-  let finalSummary = summary
+  let finalSummary = canonicalSummaryFromEvents(events, summary)
+  validateFinishSummary(finalSummary)
   let tokenUsageCollection = null
   if (collectCodexUsage) {
     const first = events[0]
-    const result = collectCodexSessionUsage(summary, {
+    const result = collectCodexSessionUsage(finalSummary, {
       sessionsRoot,
       startedAt: first.timestamp,
       endedAt: timestamp || new Date().toISOString(),
@@ -833,18 +1046,24 @@ const readDataOption = (options, label) => {
 }
 
 const help = `Usage:
+  review-run-log.mjs templates
   review-run-log.mjs start [--repo-root <path>] [--output-root <path>] [--data-json <object>]
   review-run-log.mjs append --log <path> --event <lower_snake_case> [--data-json <object>]
   review-run-log.mjs finish --log <path> [--collect-codex-usage] [--sessions-root <path>] [--data-json <summary>]
   review-run-log.mjs report --log <path>
 
 Use --data-file <path> instead of --data-json, or --data-file - to read JSON from stdin.
-Each command prints JSON. start prints logPath and runId; finish prints the derived metrics.`
+Each command prints JSON. templates prints canonical start, event, and finish payloads;
+start prints logPath and runId; finish prints the derived metrics.`
 
 const main = () => {
   const [command, ...args] = process.argv.slice(2)
   if (!command || command === '--help' || command === 'help') {
     process.stdout.write(`${help}\n`)
+    return
+  }
+  if (command === 'templates') {
+    process.stdout.write(`${JSON.stringify(LOG_TEMPLATES, null, 2)}\n`)
     return
   }
   const options = parseOptions(args)

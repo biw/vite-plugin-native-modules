@@ -18,7 +18,7 @@ Collect fresh review-bot checks and comments for the current GitHub PR.
 
 Options:
   --wait                         Wait for review-like checks to finish before snapshotting.
-  --timeout-minutes <n>          Max wait time. Default: 20.
+  --timeout-minutes <n>          Max wait time. Default: 35.
   --poll-seconds <n>             Poll interval while waiting. Default: 20.
   --discovery-seconds <n>        Wait this long for review checks to appear. Default: 90.
   --pr <number>                  PR number. Default: current branch PR from gh pr view.
@@ -43,7 +43,7 @@ const parseArgs = (argv) => {
     pollSeconds: 20,
     pr: undefined,
     since: undefined,
-    timeoutMinutes: 20,
+    timeoutMinutes: 35,
     wait: false,
   }
 

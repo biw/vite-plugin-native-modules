@@ -1,5 +1,7 @@
 # Review Run Logging
 
+For ordinary runs, resolve this skill's directory and use `node <skill-dir>/scripts/review-run-log.mjs templates` instead of loading this reference. Use the details below to diagnose rejected records, extend telemetry, or interpret derived metrics.
+
 Write one append-only JSONL file per skill run under:
 
 ```text
@@ -15,7 +17,7 @@ Resolve the directory containing the skill's `SKILL.md`, then start the log befo
 ```bash
 node scripts/review-run-log.mjs start \
   --repo-root "$PWD" \
-  --data-json '{"requestedReviewerCount":5,"reviewerCohortRequested":[{"model":"gpt-5.6-sol","count":1},{"model":"gpt-5.6-terra","count":2},{"model":"gpt-5.6-luna","count":2}],"reasoningRequested":"high","remediationRoundLimit":3,"reviewBotLoopLimit":8}'
+  --data-json '{"requestedReviewerCount":3,"reviewerCohortRequested":[{"model":"gpt-5.6-sol","count":1},{"model":"gpt-5.6-terra","count":1},{"model":"gpt-5.6-luna","count":1}],"reasoningRequested":"high","remediationRoundLimit":3,"reviewBotLoopLimit":8}'
 ```
 
 Keep the returned `logPath` in `.context`. Append an event immediately after each reviewer pass so partial runs remain useful if later work stops:
@@ -41,6 +43,11 @@ For every reviewer pass, record:
 - whether the pass found any issue and whether findings were new, repeated, or overlapping,
 - actual token usage when the runtime exposes it; otherwise use `null`, never an estimate,
 - duration when observable and any failure or retry.
+
+Use these exact event keys: `reviewerId`, `findingIds`, `sessionId`, and `tokenUsage`.
+The finish helper reconstructs the canonical reviewer rounds and continuity checks from these
+events. This is the source of truth; do not hand-write aliases such as `reviewer`,
+`finding_ids`, `id`, `model`, or `initialFindingIds` in the finish summary.
 
 Do not log full prompts, full review bodies, code contents, credentials, environment variables, or auth material. Finding IDs and concise summaries are enough for later analysis.
 
@@ -92,6 +99,11 @@ Always attempt `finish`, including for blocked or failed runs. Pass a summary wi
 ```
 
 Include one reviewer object for every configured reviewer, even when it found no issues. Preserve applied model and reasoning fields so comparisons and labels reflect what actually ran rather than what was merely requested; leave an unavailable `modelApplied` or `reasoningApplied` unset so the helper reports it as `unknown`. Record every continuity attempt in `continuityChecks`, including retries and `tokenUsage: null` when the runtime exposes no accounting.
+
+The helper merges this summary with the run's reviewer events before collecting usage. It rejects a
+summary that lacks a recorded reviewer round or continuity check, rather than rendering a
+plausible-looking table with placeholder reviewers. Fix the missing event or session metadata and
+rerun `finish`; never substitute a guessed token count.
 
 ```bash
 node scripts/review-run-log.mjs finish \
