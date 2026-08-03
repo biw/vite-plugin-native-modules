@@ -131,6 +131,9 @@ If a fresh valid actionable bot finding appears after a push, deepen the next se
 
 Be selective about waiting for GitHub. This skill is for PR review automation after a push; for normal implementation work, the repository's local validation command is usually the faster gate. The helper waits for review-like checks matching Claude, Devin, or review patterns and should not block indefinitely on unrelated CI.
 
+The helper's default wait limit is 35 minutes so it exceeds the Claude review workflow's
+30-minute job limit. Keep those values coordinated when either limit changes.
+
 ## Helper Script
 
 Use `scripts/review-bot-snapshot.mjs` rather than rewriting GitHub API commands. Default bots are Claude and Devin; override with `--bot-logins` or `REVIEW_BOT_LOGINS` if needed.
