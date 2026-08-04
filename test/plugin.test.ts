@@ -10,6 +10,33 @@ import { parse as acornParse } from "acorn";
 // Wrapper to provide the same parse signature as Rollup
 const parse = (code: string) => acornParse(code, { ecmaVersion: "latest" });
 
+function nativeFilename(
+  originalFilename: string,
+  content: Buffer,
+  hashOnly = false
+): string {
+  const extension = path.extname(originalFilename);
+  const hash = crypto
+    .createHash("md5")
+    .update(content)
+    .digest("hex")
+    .slice(0, 8)
+    .toUpperCase();
+
+  return hashOnly
+    ? `${hash}${extension}`
+    : `${path.basename(originalFilename, extension)}-${hash}${extension}`;
+}
+
+function bundleReferencing(...filenames: string[]) {
+  return {
+    "index.js": {
+      type: "chunk",
+      code: filenames.map((filename) => `require("./${filename}")`).join("\n"),
+    },
+  };
+}
+
 describe("nativeFilePlugin", () => {
   let tempDir: string;
 
@@ -861,9 +888,10 @@ describe("nativeFilePlugin", () => {
       const plugin = nativeFilePlugin() as Plugin;
       const nodeFilePath = path.join(projectRoot, "watch.node");
       const importerPath = path.join(projectRoot, "index.js");
+      const nodeFileContent = Buffer.from("watch native module");
 
       fs.mkdirSync(projectRoot, { recursive: true });
-      fs.writeFileSync(nodeFilePath, Buffer.from("watch native module"));
+      fs.writeFileSync(nodeFilePath, nodeFileContent);
 
       (plugin.configResolved as any)({
         command: "build",
@@ -903,7 +931,7 @@ describe("nativeFilePlugin", () => {
         (plugin.generateBundle as any).call(
           context,
           { dir: output },
-          {},
+          bundleReferencing(nativeFilename("watch.node", nodeFileContent)),
           isWrite
         );
 
@@ -951,7 +979,12 @@ describe("nativeFilePlugin", () => {
       );
 
       // Generate bundle
-      (plugin.generateBundle as any).call(mockContext, {}, {}, false);
+      (plugin.generateBundle as any).call(
+        mockContext,
+        {},
+        bundleReferencing(nativeFilename("test.node", testContent)),
+        false
+      );
 
       expect(emittedFiles.length).toBeGreaterThan(0);
       expect(emittedFiles[0].type).toBe("asset");
@@ -1211,7 +1244,14 @@ describe("nativeFilePlugin", () => {
       );
 
       // Generate bundle to emit files
-      (plugin.generateBundle as any).call(mockContext, {}, {}, false);
+      (plugin.generateBundle as any).call(
+        mockContext,
+        {},
+        bundleReferencing(
+          nativeFilename("addon.node", Buffer.from("fake binary"))
+        ),
+        false
+      );
 
       expect(emittedFiles.length).toBeGreaterThan(0);
       expect(emittedFiles[0].fileName).toMatch(/addon-[A-F0-9]{8}\.node/);
@@ -1245,7 +1285,14 @@ describe("nativeFilePlugin", () => {
       );
 
       // Generate bundle to emit files
-      (plugin.generateBundle as any).call(mockContext, {}, {}, false);
+      (plugin.generateBundle as any).call(
+        mockContext,
+        {},
+        bundleReferencing(
+          nativeFilename("addon.node", Buffer.from("fake binary"), true)
+        ),
+        false
+      );
 
       expect(emittedFiles.length).toBeGreaterThan(0);
       // Should be just hash.node, not addon-hash.node
@@ -1281,7 +1328,14 @@ describe("nativeFilePlugin", () => {
       );
 
       // Generate bundle to emit files
-      (plugin.generateBundle as any).call(mockContext, {}, {}, false);
+      (plugin.generateBundle as any).call(
+        mockContext,
+        {},
+        bundleReferencing(
+          nativeFilename("native.node", Buffer.from("fake binary"))
+        ),
+        false
+      );
 
       expect(emittedFiles.length).toBeGreaterThan(0);
       expect(emittedFiles[0].fileName).toMatch(/native-[A-F0-9]{8}\.node/);
@@ -1308,7 +1362,12 @@ describe("nativeFilePlugin", () => {
           return "mock-reference-id";
         },
       };
-      (plugin.generateBundle as any).call(mockContext, {}, {}, false);
+      (plugin.generateBundle as any).call(
+        mockContext,
+        {},
+        bundleReferencing(nativeFilename("first.node", content, true)),
+        false
+      );
 
       expect(emittedFiles).toHaveLength(1);
       expect(emittedFiles[0].source).toEqual(content);
@@ -1337,7 +1396,12 @@ describe("nativeFilePlugin", () => {
       };
 
       expect(() =>
-        (plugin.generateBundle as any).call(mockContext, {}, {}, false)
+        (plugin.generateBundle as any).call(
+          mockContext,
+          {},
+          bundleReferencing(nativeFilename("first.node", firstContent, true)),
+          false
+        )
       ).toThrow(
         "Native files produced the same output name with different contents: 94141742.node"
       );

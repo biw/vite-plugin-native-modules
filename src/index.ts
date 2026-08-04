@@ -703,9 +703,13 @@ export default function nativeFilePlugin(
       // Otherwise keep default 'es' (Vite's default for modern builds)
     },
 
-    generateBundle(outputOptions, _bundle, isWrite) {
+    generateBundle(outputOptions, bundle, isWrite) {
       const outputDirectory = resolveOutputDirectory(outputOptions);
       const nativeFilesByOutputName = new Map<string, NativeFileInfo>();
+      const renderedBundleCode = Object.values(bundle)
+        .filter((output) => output.type === "chunk")
+        .map((chunk) => chunk.code)
+        .join("\n");
       const reuseWrittenAssets =
         this.meta?.watchMode && isWrite && !shouldEmptyOutDir;
       let pendingEmittedFiles =
@@ -721,6 +725,11 @@ export default function nativeFilePlugin(
 
       // Emit each .node file as an asset
       nativeFiles.forEach((info) => {
+        // Native files are registered while modules are transformed, before
+        // Rollup tree-shakes their code. Emit only the files still referenced
+        // by a rendered chunk.
+        if (!renderedBundleCode.includes(info.hashedFilename)) return;
+
         const existingInfo = nativeFilesByOutputName.get(info.hashedFilename);
         if (existingInfo) {
           if (!existingInfo.content.equals(info.content)) {
