@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import nativeFilePlugin from "../src/index.js";
 import type { Plugin } from "vite";
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import os from "node:os";
 import { parse as acornParse } from "acorn";
@@ -394,7 +395,8 @@ describe("Prebuild Packages Support (Issue #18)", () => {
       });
 
       const nodeFilePath = path.join(tempDir, "addon.node");
-      fs.writeFileSync(nodeFilePath, Buffer.from("native code"));
+      const nodeFileContent = Buffer.from("native code");
+      fs.writeFileSync(nodeFilePath, nodeFileContent);
 
       const emittedFiles: any[] = [];
       const mockContext = {
@@ -415,7 +417,22 @@ describe("Prebuild Packages Support (Issue #18)", () => {
       );
 
       // Generate bundle (emit files)
-      (plugin.generateBundle as any).call(mockContext, {}, {});
+      const hashedFilename = `addon-${crypto
+        .createHash("md5")
+        .update(nodeFileContent)
+        .digest("hex")
+        .slice(0, 8)
+        .toUpperCase()}.node`;
+      (plugin.generateBundle as any).call(
+        mockContext,
+        {},
+        {
+          "index.js": {
+            type: "chunk",
+            code: `require("./${hashedFilename}")`,
+          },
+        }
+      );
 
       // Verify file was emitted directly without any bundling
       expect(emittedFiles.length).toBe(1);
