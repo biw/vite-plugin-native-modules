@@ -40,6 +40,20 @@ codex exec \
 
 Supply the shared review prompt on stdin. Never pass `--ephemeral` to an initial or follow-up reviewer command. Capture each `thread.started.thread_id` immediately.
 
+### Recover a lost CLI result before retrying
+
+If the command wrapper loses, truncates, or cannot read a CLI reviewer's output after the thread ID was captured, do **not** classify the invocation as failed or launch a retry yet. First recover the exact persistent session from the run ledger:
+
+```bash
+node scripts/review-run-log.mjs recover-cli-session \
+  --log "$REVIEW_RUN_LOG" \
+  --reviewer-id "$REVIEWER_ID"
+```
+
+The recovery command succeeds only when exactly one `codex exec` session matches the ledger's thread ID and repository, its applied model and reasoning match the ledger, and it contains a completed task with a matching final-answer event. Its `lastAgentMessage` is the recovered review result; use it exactly as if the command output had arrived. Do not write that review body into the run log.
+
+When recovery returns `in_progress`, leave the session unchanged and poll that same command after a bounded wait; do not resume it or launch a second initial review while the first task lacks `task_complete`. Only when recovery is `unavailable` after the session is no longer progressing may the existing single retry run with the same reviewer identity and controls. Log the recovery outcome without the review body, then log the ordinary completed pass. A recovered result is not a retry and must retain the original session ID.
+
 ## Record and verify continuity
 
 Before fixes, write a gitignored `.context/reviewer-sessions.json` operational ledger containing, for each reviewer:
