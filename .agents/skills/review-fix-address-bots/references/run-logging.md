@@ -49,6 +49,19 @@ The finish helper reconstructs the canonical reviewer rounds and continuity chec
 events. This is the source of truth; do not hand-write aliases such as `reviewer`,
 `finding_ids`, `id`, `model`, or `initialFindingIds` in the finish summary.
 
+If a persistent CLI reviewer finishes but its command output is unavailable, recover it before
+retrying with:
+
+```bash
+node scripts/review-run-log.mjs recover-cli-session \
+  --log "$REVIEW_RUN_LOG" \
+  --reviewer-id "$REVIEWER_ID"
+```
+
+The command validates the exact `codex exec` session ID, repository, applied model, applied
+reasoning, and completed final answer. It emits the recovered result on stdout but does not write
+the review body to the run log. Record a concise recovery outcome and then the normal pass event.
+
 Do not log full prompts, full review bodies, code contents, credentials, environment variables, or auth material. Finding IDs and concise summaries are enough for later analysis.
 
 ## Finish Schema

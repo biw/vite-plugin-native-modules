@@ -17,7 +17,7 @@ Perform each requested outcome when combined. CLI access is never authorization 
 
 1. Identify the PR and base. Prefer `gh pr view --json number,title,body,baseRefName,headRefName,url`; without a PR, compare against the user-provided or repository default base. Fetch before relying on stale refs.
 2. Establish evidence from `git status --short`, diff stats and names, relevant commits, changed files, tests, docs, migrations, config, and generated artifacts. Treat `.context/` as scratch and restate any useful fact because it is untracked. Do not rely on chat or memory for behavioral claims.
-3. Determine the problem, approach, outcome, deliberate exclusions, risk, compatibility, edge cases, operational gotchas, migrations, flags, cleanup, and reviewer focus. For close-review items, give a precise file/line reference and explanation. Include exact changed code only when the reference alone does not reveal the decision or contract, capped at 15 lines.
+3. Determine the problem, approach, outcome, deliberate exclusions, risk, compatibility, edge cases, operational gotchas, migrations, flags, cleanup, and reviewer focus. For close-review items, give a precise file/line reference and explanation. Every PR body must include one fenced excerpt of actual changed code, configuration, or documentation from the most review-critical hunk, capped at 15 lines; a link-only review section is insufficient.
 4. Inventory affected and added tests. Run the narrowest reliable checks, then documented broader validation when feasible. Classify coverage as sufficient, partially sufficient, or insufficient; name regressions it catches, important gaps, and concrete follow-up tests. Never claim confidence from unrun or irrelevant tests.
 5. Deliver only the authorized outcome:
    - Assessment: report evidence and coverage judgment without creating a body.
@@ -33,7 +33,7 @@ For draft/update work, load `assets/pr-body.md.tmpl` unless the repository has a
 - Ground claims in code, tests, docs, commits, or command output; distinguish facts from assumptions and judgment.
 - Preserve the existing title and useful body content unless replacement is clearer.
 - Name behavior instead of saying “various fixes” or “improves behavior.”
-- Cite precise file/line references for close-review items; excerpts must be actual changed code, materially helpful, and at most 15 lines.
+- Cite precise file/line references for close-review items. Include one actual changed excerpt in a fenced code block; it must be materially helpful and at most 15 lines.
 - Include failed, skipped, and unavailable validation with reasons.
 - Do not make unrelated code changes unless explicitly asked.
 
