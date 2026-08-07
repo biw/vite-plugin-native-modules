@@ -9,24 +9,11 @@ import vite8Package from "vite8/package.json";
 import nativeFilePlugin from "../src/index.js";
 
 type ViteBuild = (config: unknown) => Promise<unknown>;
-type ViteBuildError = { code?: unknown; errors?: Array<{ code?: unknown }> };
 
 const viteVersions = [
   { build: buildVite7 as ViteBuild, major: 7, version: vite7Package.version },
   { build: buildVite8 as ViteBuild, major: 8, version: vite8Package.version },
 ];
-
-function containsParseError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) {
-    return false;
-  }
-
-  const buildError = error as ViteBuildError;
-  return (
-    buildError.code === "PARSE_ERROR" ||
-    buildError.errors?.some((nestedError) => nestedError.code === "PARSE_ERROR") === true
-  );
-}
 
 describe.each(viteVersions)(
   "direct native ESM imports on Vite $major",
@@ -41,26 +28,24 @@ describe.each(viteVersions)(
       fs.rmSync(tempDir, { force: true, recursive: true });
     });
 
-    it("continues to reject a direct native ESM import", async () => {
+    it("builds a direct native ESM import", async () => {
       expect(version).toMatch(new RegExp(`^${major}\\.`));
 
       const entryPath = path.join(tempDir, "index.js");
       fs.writeFileSync(path.join(tempDir, "addon.node"), Buffer.from("fake native module"));
       fs.writeFileSync(entryPath, 'import addon from "./addon.node";\nconsole.log(addon);\n');
 
-      await expect(
-        build({
-          build: {
-            rollupOptions: { input: entryPath },
-            ssr: true,
-            write: false,
-          },
-          configFile: false,
-          logLevel: "silent",
-          plugins: [nativeFilePlugin()],
-          root: tempDir,
-        }),
-      ).rejects.toSatisfy(containsParseError);
+      await build({
+        build: {
+          rollupOptions: { input: entryPath },
+          ssr: true,
+          write: false,
+        },
+        configFile: false,
+        logLevel: "silent",
+        plugins: [nativeFilePlugin()],
+        root: tempDir,
+      });
     });
   },
 );
