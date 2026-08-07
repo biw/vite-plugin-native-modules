@@ -49,6 +49,8 @@
     "typescript": "5.9.3",
     "vite": "6.2.1",
     "vite-plus": "catalog:",
+    "vite7": "npm:vite@7.3.6",
+    "vite8": "npm:vite@8.2.1",
     "vitest": "^2.1.8"
   },
   "peerDependencies": {
