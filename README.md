@@ -102,7 +102,7 @@ This repository uses Vite+ for its development workflow (with pnpm as the packag
 ```bash
 vp install
 vp check
-pnpm test
+vp run test
 vp pack
 ```
 
