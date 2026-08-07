@@ -29,7 +29,7 @@ jobs:
         run: vp check
 
       - name: Test
-        run: pnpm test
+        run: vp run test
 
       - name: Build
         run: vp pack
