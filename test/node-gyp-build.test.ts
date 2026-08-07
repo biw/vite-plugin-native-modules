@@ -46,11 +46,7 @@ describe("node-gyp-build Support", () => {
       });
 
       // Create prebuilds directory structure
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
 
       const nodeFilePath = path.join(prebuildsDir, "binding.node");
@@ -86,17 +82,10 @@ describe("node-gyp-build Support", () => {
         },
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
 
-      fs.writeFileSync(
-        path.join(prebuildsDir, "binding.node"),
-        Buffer.from("native binding")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "binding.node"), Buffer.from("native binding"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `const binding = require('node-gyp-build')(__dirname);`;
@@ -105,24 +94,14 @@ describe("node-gyp-build Support", () => {
       const result = (plugin.transform as any).call(context, code, jsFilePath);
 
       expect(result).toBeDefined();
-      expect(result.code).toMatch(
-        /\.node\?native-require=[a-f0-9]{64}"\)\.default/
-      );
+      expect(result.code).toMatch(/\.node\?native-require=[a-f0-9]{64}"\)\.default/);
     });
 
     it("should preserve native file identity when generated filenames collide", async () => {
       const firstDir = path.join(tempDir, "first");
       const secondDir = path.join(tempDir, "second");
-      const firstPrebuildsDir = path.join(
-        firstDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
-      const secondPrebuildsDir = path.join(
-        secondDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const firstPrebuildsDir = path.join(firstDir, "prebuilds", `${platform}-${arch}`);
+      const secondPrebuildsDir = path.join(secondDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(firstPrebuildsDir, { recursive: true });
       fs.mkdirSync(secondPrebuildsDir, { recursive: true });
 
@@ -153,21 +132,11 @@ describe("node-gyp-build Support", () => {
       const firstImporter = path.join(firstDir, "index.js");
       const secondImporter = path.join(secondDir, "index.js");
       const context = { parse };
-      const firstResult = (plugin.transform as any).call(
-        context,
-        code,
-        firstImporter
-      );
-      const secondResult = (plugin.transform as any).call(
-        context,
-        code,
-        secondImporter
-      );
+      const firstResult = (plugin.transform as any).call(context, code, firstImporter);
+      const secondResult = (plugin.transform as any).call(context, code, secondImporter);
 
       const firstSpecifier = firstResult.code.match(/require\("([^"]+)"\)/)?.[1];
-      const secondSpecifier = secondResult.code.match(
-        /require\("([^"]+)"\)/
-      )?.[1];
+      const secondSpecifier = secondResult.code.match(/require\("([^"]+)"\)/)?.[1];
       expect(firstSpecifier).toBeDefined();
       expect(secondSpecifier).toBeDefined();
       expect(firstSpecifier).not.toBe(secondSpecifier);
@@ -178,29 +147,21 @@ describe("node-gyp-build Support", () => {
         {} as any,
         firstSpecifier,
         firstImporter,
-        {}
+        {},
       );
       const secondResolution = await (plugin.resolveId as any).call(
         {} as any,
         secondSpecifier,
         secondImporter,
-        {}
+        {},
       );
       const firstVirtualId =
-        typeof firstResolution === "object"
-          ? firstResolution.id
-          : firstResolution;
+        typeof firstResolution === "object" ? firstResolution.id : firstResolution;
       const secondVirtualId =
-        typeof secondResolution === "object"
-          ? secondResolution.id
-          : secondResolution;
+        typeof secondResolution === "object" ? secondResolution.id : secondResolution;
 
-      expect(firstVirtualId).toBe(
-        `\0native:${firstNodeFile}?native-require`
-      );
-      expect(secondVirtualId).toBe(
-        `\0native:${secondNodeFile}?native-require`
-      );
+      expect(firstVirtualId).toBe(`\0native:${firstNodeFile}?native-require`);
+      expect(secondVirtualId).toBe(`\0native:${secondNodeFile}?native-require`);
     });
 
     it("should keep plain CommonJS require when output format is CommonJS", () => {
@@ -218,17 +179,10 @@ describe("node-gyp-build Support", () => {
         },
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
 
-      fs.writeFileSync(
-        path.join(prebuildsDir, "binding.node"),
-        Buffer.from("native binding")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "binding.node"), Buffer.from("native binding"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `const binding = require('node-gyp-build')(__dirname);`;
@@ -237,8 +191,8 @@ describe("node-gyp-build Support", () => {
       const result = (plugin.transform as any).call(context, code, jsFilePath);
 
       expect(result).toBeDefined();
-      expect(result.code).toContain(".node\")");
-      expect(result.code).not.toContain(".node\").default");
+      expect(result.code).toContain('.node")');
+      expect(result.code).not.toContain('.node").default');
     });
 
     it("should handle napi.node files in prebuilds", () => {
@@ -250,11 +204,7 @@ describe("node-gyp-build Support", () => {
       });
 
       // Create prebuilds with napi file
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
 
       const napiFile = path.join(prebuildsDir, "node.napi.node");
@@ -279,22 +229,12 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
 
       // Create both napi and abi-specific files
-      fs.writeFileSync(
-        path.join(prebuildsDir, "node.abi93.node"),
-        Buffer.from("abi93")
-      );
-      fs.writeFileSync(
-        path.join(prebuildsDir, "node.napi.node"),
-        Buffer.from("napi")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "node.abi93.node"), Buffer.from("abi93"));
+      fs.writeFileSync(path.join(prebuildsDir, "node.napi.node"), Buffer.from("napi"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `const binding = require('node-gyp-build')(__dirname);`;
@@ -318,16 +258,9 @@ describe("node-gyp-build Support", () => {
       });
 
       // Create prebuilds directory
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "addon.node"),
-        Buffer.from("addon")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "addon.node"), Buffer.from("addon"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `
@@ -353,16 +286,9 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "binding.node"),
-        Buffer.from("binding")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "binding.node"), Buffer.from("binding"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `
@@ -387,16 +313,9 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "native.node"),
-        Buffer.from("native")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "native.node"), Buffer.from("native"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `
@@ -465,9 +384,7 @@ describe("node-gyp-build Support", () => {
       const result = (plugin.transform as any).call(context, code, jsFilePath);
 
       expect(result).toBeDefined();
-      expect(result.code).toMatch(
-        /addon-[A-F0-9]{8}\.node|other-[A-F0-9]{8}\.node/
-      );
+      expect(result.code).toMatch(/addon-[A-F0-9]{8}\.node|other-[A-F0-9]{8}\.node/);
     });
   });
 
@@ -482,16 +399,9 @@ describe("node-gyp-build Support", () => {
 
       // Create nested structure
       const subdir = path.join(tempDir, "native");
-      const prebuildsDir = path.join(
-        subdir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(subdir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "binding.node"),
-        Buffer.from("binding")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "binding.node"), Buffer.from("binding"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `const binding = require('node-gyp-build')(path.join(__dirname, 'native'));`;
@@ -515,10 +425,7 @@ describe("node-gyp-build Support", () => {
       const subdir = path.join(tempDir, "lib");
       const buildDir = path.join(subdir, "build", "Release");
       fs.mkdirSync(buildDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(buildDir, "native.node"),
-        Buffer.from("native")
-      );
+      fs.writeFileSync(path.join(buildDir, "native.node"), Buffer.from("native"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `const binding = require('node-gyp-build')(path.resolve(__dirname, 'lib'));`;
@@ -542,15 +449,11 @@ describe("node-gyp-build Support", () => {
 
       // Simulate better-sqlite3 in node_modules
       const pkgDir = path.join(tempDir, "node_modules", "better-sqlite3");
-      const prebuildsDir = path.join(
-        pkgDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(pkgDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(
         path.join(prebuildsDir, "node.napi.node"),
-        Buffer.from("better-sqlite3 binding")
+        Buffer.from("better-sqlite3 binding"),
       );
 
       const jsFilePath = path.join(pkgDir, "lib", "index.js");
@@ -582,7 +485,7 @@ describe("node-gyp-build Support", () => {
       fs.mkdirSync(buildDir, { recursive: true });
       fs.writeFileSync(
         path.join(buildDir, `sharp-${platform}-${arch}.node`),
-        Buffer.from("sharp binding")
+        Buffer.from("sharp binding"),
       );
 
       const jsFilePath = path.join(pkgDir, "lib", "index.js");
@@ -626,16 +529,9 @@ describe("node-gyp-build Support", () => {
         mode: "development",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "binding.node"),
-        Buffer.from("binding")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "binding.node"), Buffer.from("binding"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `const binding = require('node-gyp-build')(__dirname);`;
@@ -654,16 +550,9 @@ describe("node-gyp-build Support", () => {
         mode: "development",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "binding.node"),
-        Buffer.from("binding")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "binding.node"), Buffer.from("binding"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `const binding = require('node-gyp-build')(__dirname);`;
@@ -687,28 +576,14 @@ describe("node-gyp-build Support", () => {
       const addon1Dir = path.join(tempDir, "addon1");
       const addon2Dir = path.join(tempDir, "addon2");
 
-      const prebuilds1 = path.join(
-        addon1Dir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
-      const prebuilds2 = path.join(
-        addon2Dir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuilds1 = path.join(addon1Dir, "prebuilds", `${platform}-${arch}`);
+      const prebuilds2 = path.join(addon2Dir, "prebuilds", `${platform}-${arch}`);
 
       fs.mkdirSync(prebuilds1, { recursive: true });
       fs.mkdirSync(prebuilds2, { recursive: true });
 
-      fs.writeFileSync(
-        path.join(prebuilds1, "addon1.node"),
-        Buffer.from("addon1")
-      );
-      fs.writeFileSync(
-        path.join(prebuilds2, "addon2.node"),
-        Buffer.from("addon2")
-      );
+      fs.writeFileSync(path.join(prebuilds1, "addon1.node"), Buffer.from("addon1"));
+      fs.writeFileSync(path.join(prebuilds2, "addon2.node"), Buffer.from("addon2"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `
@@ -736,16 +611,9 @@ describe("node-gyp-build Support", () => {
       const regularNode = path.join(tempDir, "regular.node");
       fs.writeFileSync(regularNode, Buffer.from("regular"));
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "dynamic.node"),
-        Buffer.from("dynamic")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "dynamic.node"), Buffer.from("dynamic"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `
@@ -772,16 +640,9 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "binding.node"),
-        Buffer.from("consistent content")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "binding.node"), Buffer.from("consistent content"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `const binding = require('node-gyp-build')(__dirname);`;
@@ -801,16 +662,9 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "binding.node"),
-        Buffer.from("test content")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "binding.node"), Buffer.from("test content"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `const binding = require('node-gyp-build')(__dirname);`;
@@ -833,16 +687,9 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "binding.node"),
-        Buffer.from("native binding")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "binding.node"), Buffer.from("native binding"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `
@@ -872,16 +719,9 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "addon.node"),
-        Buffer.from("addon")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "addon.node"), Buffer.from("addon"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `
@@ -908,16 +748,9 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "native.node"),
-        Buffer.from("native")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "native.node"), Buffer.from("native"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `
@@ -976,16 +809,9 @@ describe("node-gyp-build Support", () => {
       });
 
       const subdir = path.join(tempDir, "native");
-      const prebuildsDir = path.join(
-        subdir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(subdir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "binding.node"),
-        Buffer.from("binding")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "binding.node"), Buffer.from("binding"));
 
       const jsFilePath = path.join(tempDir, "index.js");
 
@@ -1014,16 +840,9 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "addon.node"),
-        Buffer.from("addon")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "addon.node"), Buffer.from("addon"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `
@@ -1051,28 +870,12 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const prebuilds1 = path.join(
-        tempDir,
-        "pkg1",
-        "prebuilds",
-        `${platform}-${arch}`
-      );
-      const prebuilds2 = path.join(
-        tempDir,
-        "pkg2",
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuilds1 = path.join(tempDir, "pkg1", "prebuilds", `${platform}-${arch}`);
+      const prebuilds2 = path.join(tempDir, "pkg2", "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuilds1, { recursive: true });
       fs.mkdirSync(prebuilds2, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuilds1, "addon1.node"),
-        Buffer.from("addon1")
-      );
-      fs.writeFileSync(
-        path.join(prebuilds2, "addon2.node"),
-        Buffer.from("addon2")
-      );
+      fs.writeFileSync(path.join(prebuilds1, "addon1.node"), Buffer.from("addon1"));
+      fs.writeFileSync(path.join(prebuilds2, "addon2.node"), Buffer.from("addon2"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `
@@ -1103,28 +906,12 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const prebuilds1 = path.join(
-        tempDir,
-        "pkg1",
-        "prebuilds",
-        `${platform}-${arch}`
-      );
-      const prebuilds2 = path.join(
-        tempDir,
-        "pkg2",
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuilds1 = path.join(tempDir, "pkg1", "prebuilds", `${platform}-${arch}`);
+      const prebuilds2 = path.join(tempDir, "pkg2", "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuilds1, { recursive: true });
       fs.mkdirSync(prebuilds2, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuilds1, "native1.node"),
-        Buffer.from("native1")
-      );
-      fs.writeFileSync(
-        path.join(prebuilds2, "native2.node"),
-        Buffer.from("native2")
-      );
+      fs.writeFileSync(path.join(prebuilds1, "native1.node"), Buffer.from("native1"));
+      fs.writeFileSync(path.join(prebuilds2, "native2.node"), Buffer.from("native2"));
 
       const jsFilePath = path.join(tempDir, "index.js");
       const code = `
@@ -1185,27 +972,21 @@ describe("node-gyp-build Support", () => {
       });
 
       // Create prebuilds structure matching the image (libopus package example)
-      const platforms = [
-        "darwin-arm64",
-        "darwin-x64",
-        "linux-arm64",
-        "linux-x64",
-        "win32-x64",
-      ];
+      const platforms = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-x64"];
 
       for (const platformArch of platforms) {
         const prebuildsDir = path.join(tempDir, "prebuilds", platformArch);
         fs.mkdirSync(prebuildsDir, { recursive: true });
         fs.writeFileSync(
           path.join(prebuildsDir, "libopus-node.glibc.node"),
-          Buffer.from(`libopus for ${platformArch}`)
+          Buffer.from(`libopus for ${platformArch}`),
         );
       }
 
       // Also add musl variant for linux-x64
       fs.writeFileSync(
         path.join(tempDir, "prebuilds", "linux-x64", "libopus-node.musl.node"),
-        Buffer.from("libopus for linux-x64 musl")
+        Buffer.from("libopus for linux-x64 musl"),
       );
 
       // Create a subdirectory for the JS file (like dist/)
@@ -1238,16 +1019,9 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${platform}-${arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(prebuildsDir, "binding.node"),
-        Buffer.from("binding")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "binding.node"), Buffer.from("binding"));
 
       // Create a subdirectory for the JS file so path.resolve(currentDir, "..") points to tempDir
       const srcDir = path.join(tempDir, "src");
@@ -1283,16 +1057,10 @@ describe("node-gyp-build Support", () => {
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       // Create prebuilds directory structure
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "binding.node"), "fake binary");
 
@@ -1338,16 +1106,10 @@ const binding = nodeGypBuild(__dirname);`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       // Create prebuilds directory
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "addon.node"), "fake binary");
 
@@ -1376,15 +1138,11 @@ const binding = nodeGypBuild(__dirname);`;
       expect(result.code).toContain("import { createRequire } from 'module'");
 
       // Should NOT duplicate createRequire import
-      const createRequireMatches = (
-        result.code.match(/import.*createRequire.*from/g) || []
-      ).length;
+      const createRequireMatches = (result.code.match(/import.*createRequire.*from/g) || []).length;
       expect(createRequireMatches).toBe(1);
 
       // Should NOT duplicate require variable declaration
-      const requireDeclMatches = (
-        result.code.match(/const\s+require\s*=/g) || []
-      ).length;
+      const requireDeclMatches = (result.code.match(/const\s+require\s*=/g) || []).length;
       expect(requireDeclMatches).toBe(1);
 
       // Should contain the hashed node file
@@ -1399,25 +1157,16 @@ const binding = nodeGypBuild(__dirname);`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       // Create two prebuilds directories
       const pkg1Dir = path.join(tempDir, "pkg1");
       const pkg2Dir = path.join(tempDir, "pkg2");
 
       [pkg1Dir, pkg2Dir].forEach((pkgDir, idx) => {
-        const prebuildsDir = path.join(
-          pkgDir,
-          "prebuilds",
-          `${process.platform}-${process.arch}`
-        );
+        const prebuildsDir = path.join(pkgDir, "prebuilds", `${process.platform}-${process.arch}`);
         fs.mkdirSync(prebuildsDir, { recursive: true });
-        fs.writeFileSync(
-          path.join(prebuildsDir, `addon${idx + 1}.node`),
-          `fake binary ${idx + 1}`
-        );
+        fs.writeFileSync(path.join(prebuildsDir, `addon${idx + 1}.node`), `fake binary ${idx + 1}`);
       });
 
       const jsFilePath = path.join(tempDir, "index.mjs");
@@ -1442,9 +1191,7 @@ const binding2 = nodeGypBuild(path.join(__dirname, 'pkg2'));`;
       if (result.code.includes("require(")) {
         expect(result.code).toContain("createRequire");
         // Should only have ONE createRequire import and ONE require declaration
-        const createRequireMatches = (
-          result.code.match(/import.*createRequire/g) || []
-        ).length;
+        const createRequireMatches = (result.code.match(/import.*createRequire/g) || []).length;
         expect(createRequireMatches).toBeLessThanOrEqual(1);
       }
 
@@ -1460,15 +1207,9 @@ const binding2 = nodeGypBuild(path.join(__dirname, 'pkg2'));`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "native.node"), "fake binary");
 
@@ -1492,9 +1233,7 @@ const binding = nodeGypBuild(require.resolve("./"));`;
         expect(result.code).toContain("import");
 
         // Should not add duplicate createRequire
-        const createRequireImports = (
-          result.code.match(/import.*createRequire/g) || []
-        ).length;
+        const createRequireImports = (result.code.match(/import.*createRequire/g) || []).length;
         expect(createRequireImports).toBe(1);
       }
     });
@@ -1506,15 +1245,9 @@ const binding = nodeGypBuild(require.resolve("./"));`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "addon.node"), "fake binary");
 
@@ -1524,11 +1257,7 @@ const binding = nodeGypBuild(require.resolve("./"));`;
 const binding = nodeGypBuild(__dirname);`;
 
       const cjsContext = { parse };
-      const cjsResult = (plugin.transform as any).call(
-        cjsContext,
-        cjsCode,
-        cjsFilePath
-      );
+      const cjsResult = (plugin.transform as any).call(cjsContext, cjsCode, cjsFilePath);
 
       // Test ESM file
       const esmFilePath = path.join(tempDir, "esm.mjs");
@@ -1541,11 +1270,7 @@ const binding = nodeGypBuild(__dirname);`;
       const moduleAwareParse = (code: string) =>
         acornParse(code, { ecmaVersion: "latest", sourceType: "module" });
       const esmContext = { parse: moduleAwareParse };
-      const esmResult = (plugin.transform as any).call(
-        esmContext,
-        esmCode,
-        esmFilePath
-      );
+      const esmResult = (plugin.transform as any).call(esmContext, esmCode, esmFilePath);
 
       // CommonJS should use plain require
       expect(cjsResult).toBeDefined();
@@ -1568,9 +1293,7 @@ const binding = nodeGypBuild(__dirname);`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       const jsFilePath = path.join(tempDir, "no-node-gyp.mjs");
 
@@ -1605,16 +1328,10 @@ export const myFunc = () => {
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       // Create prebuilds directory
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "addon.node"), "fake binary");
 
@@ -1640,9 +1357,7 @@ const binding = nodeGypBuild(__dirname);`;
 
       // Should NOT have any bare calls to createRequire(import.meta.url)
       // without a variable or using the wrong name
-      expect(result.code).not.toMatch(
-        /createRequire\(import\.meta\.url\)[^;]*;?\s*$/m
-      );
+      expect(result.code).not.toMatch(/createRequire\(import\.meta\.url\)[^;]*;?\s*$/m);
 
       // Should use createRequire$1 if it needs to reference it
       if (result.code.includes("createRequire$1")) {
@@ -1651,14 +1366,11 @@ const binding = nodeGypBuild(__dirname);`;
       }
 
       // Should NOT use the literal "createRequire" if it was renamed
-      if (
-        result.code.includes("createRequire(") &&
-        result.code.includes("createRequire$1")
-      ) {
+      if (result.code.includes("createRequire(") && result.code.includes("createRequire$1")) {
         // If both exist, something is wrong
 
         console.error(
-          "Should not have both 'createRequire' and 'createRequire$1' - use only the renamed version"
+          "Should not have both 'createRequire' and 'createRequire$1' - use only the renamed version",
         );
         expect(false).toBe(true);
       }
@@ -1675,16 +1387,10 @@ const binding = nodeGypBuild(__dirname);`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       // Create prebuilds directory
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "binding.node"), "fake binary");
 
@@ -1725,16 +1431,10 @@ const binding = nodeGypBuild(__dirname);`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       // Create prebuilds directory
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "test.node"), "fake binary");
 
@@ -1766,7 +1466,7 @@ const addon = nodeGypBuild(__dirname);`;
       // Should contain the transformed node file
       expect(result.code).toContain("test-");
       expect(result.code).toMatch(
-        /createRequire\(import\.meta\.url\)\("\.\/test-[A-F0-9]+\.node"\)/
+        /createRequire\(import\.meta\.url\)\("\.\/test-[A-F0-9]+\.node"\)/,
       );
     });
 
@@ -1777,16 +1477,10 @@ const addon = nodeGypBuild(__dirname);`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       // Create prebuilds directory
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "addon.node"), "fake binary");
 
@@ -1849,9 +1543,7 @@ const result = addon.doSomething();`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
       const jsFilePath = path.join(tempDir, "index.mjs");
 
       // ES6 module without any node-gyp-build usage
@@ -1882,9 +1574,7 @@ export { config, hash };`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
       const jsFilePath = path.join(tempDir, "utils.js");
 
       // CommonJS module with various requires
@@ -1914,16 +1604,10 @@ module.exports = { doSomething };`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       // Create prebuilds directory
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "addon.node"), "fake binary");
 
@@ -1947,9 +1631,7 @@ export { addon };`;
       expect(result.code).toBeDefined();
 
       // Should NOT contain the node-gyp-build import
-      expect(result.code).not.toContain(
-        "import nodeGypBuild from 'node-gyp-build'"
-      );
+      expect(result.code).not.toContain("import nodeGypBuild from 'node-gyp-build'");
       expect(result.code).not.toContain("node-gyp-build");
 
       // Should still contain other imports
@@ -1968,16 +1650,10 @@ export { addon };`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       // Create prebuilds directory
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "binding.node"), "fake binary");
 
@@ -2017,16 +1693,10 @@ module.exports = { binding };`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       // Create prebuilds directory
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "myAddon.node"), "fake binary");
 
@@ -2054,16 +1724,10 @@ const addon = load(__dirname);`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       // Create prebuilds directory
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "myAddon.node"), "fake binary");
 
@@ -2090,16 +1754,10 @@ const addon = load(__dirname);`;
         mode: "production",
       });
 
-      const tempDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), "node-gyp-build-test-")
-      );
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "node-gyp-build-test-"));
 
       // Create prebuilds directory
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "native.node"), "fake binary");
 
@@ -2127,11 +1785,7 @@ const binding = load(__dirname);`;
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "binding.node"), "fake binary");
 
@@ -2146,16 +1800,12 @@ const binding = nodeGypBuild(__dirname);`;
       const moduleAwareParse = (code: string) =>
         acornParse(code, { ecmaVersion: "latest", sourceType: "module" });
       const context = { parse: moduleAwareParse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        esmFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, esmFilePath);
 
       if (!transformResult) return;
 
       let match = transformResult.code.match(
-        /createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node)['"]\)/
+        /createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node)['"]\)/,
       );
       if (!match) {
         match = transformResult.code.match(/require\(['"]([^'"]+\.node)['"]\)/);
@@ -2167,7 +1817,7 @@ const binding = nodeGypBuild(__dirname);`;
         {} as any,
         `./${hashedFilename}`,
         esmFilePath,
-        {}
+        {},
       );
 
       // resolveId now returns an object with { id, syntheticNamedExports }
@@ -2187,11 +1837,7 @@ const binding = nodeGypBuild(__dirname);`;
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "binding.node"), "fake binary");
 
@@ -2200,17 +1846,11 @@ const binding = nodeGypBuild(__dirname);`;
 const binding = nodeGypBuild(__dirname);`;
 
       const context = { parse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        cjsFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, cjsFilePath);
 
       if (!transformResult) return;
 
-      const match = transformResult.code.match(
-        /require\(['"]([^'"]+\.node)['"]\)/
-      );
+      const match = transformResult.code.match(/require\(['"]([^'"]+\.node)['"]\)/);
       if (!match) return;
       const hashedFilename = match[1];
 
@@ -2218,7 +1858,7 @@ const binding = nodeGypBuild(__dirname);`;
         {} as any,
         `./${hashedFilename}`,
         cjsFilePath,
-        {}
+        {},
       );
 
       // resolveId now returns an object with { id, syntheticNamedExports }

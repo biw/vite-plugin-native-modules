@@ -254,16 +254,10 @@ const binding = bindings({ bindings: 'binding' });`;
       expect(result).not.toBeNull();
       expect(result.code).toBeDefined();
       // Should use Release version (check hash matches release content)
-      const releaseContent = fs.readFileSync(
-        path.join(releaseDir, "addon.node")
-      );
+      const releaseContent = fs.readFileSync(path.join(releaseDir, "addon.node"));
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const crypto = require("crypto");
-      const releaseHash = crypto
-        .createHash("md5")
-        .update(releaseContent)
-        .digest("hex")
-        .slice(0, 8);
+      const releaseHash = crypto.createHash("md5").update(releaseContent).digest("hex").slice(0, 8);
       expect(result.code).toContain(`addon-${releaseHash.toUpperCase()}.node`);
     });
   });
@@ -456,7 +450,7 @@ module.exports = { addon };`;
       // Create package.json to mark this as a package root
       fs.writeFileSync(
         path.join(nodeModulesDir, "package.json"),
-        JSON.stringify({ name: "test-package", version: "1.0.0" })
+        JSON.stringify({ name: "test-package", version: "1.0.0" }),
       );
 
       // Create the package's build directory with .node file
@@ -470,11 +464,7 @@ module.exports = { addon };`;
 module.exports = bindings('native');`;
 
       const context = { parse };
-      const result = (plugin.transform as any).call(
-        context,
-        packageCode,
-        packageIndexPath
-      );
+      const result = (plugin.transform as any).call(context, packageCode, packageIndexPath);
 
       expect(result).not.toBeNull();
       expect(result.code).toBeDefined();
@@ -498,16 +488,13 @@ module.exports = bindings('native');`;
       // Create package.json
       fs.writeFileSync(
         path.join(packageDir, "package.json"),
-        JSON.stringify({ name: "better-sqlite3", version: "1.0.0" })
+        JSON.stringify({ name: "better-sqlite3", version: "1.0.0" }),
       );
 
       // Create build directory with .node file
       const buildDir = path.join(packageDir, "build", "Release");
       fs.mkdirSync(buildDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(buildDir, "better_sqlite3.node"),
-        "fake binary"
-      );
+      fs.writeFileSync(path.join(buildDir, "better_sqlite3.node"), "fake binary");
 
       // Create lib/database.js that uses bindings
       const libDir = path.join(packageDir, "lib");
@@ -549,14 +536,14 @@ module.exports = Database;`;
         "@org",
         "package",
         "node_modules",
-        "native-dep"
+        "native-dep",
       );
       fs.mkdirSync(packageDir, { recursive: true });
 
       // Create package.json
       fs.writeFileSync(
         path.join(packageDir, "package.json"),
-        JSON.stringify({ name: "native-dep", version: "1.0.0" })
+        JSON.stringify({ name: "native-dep", version: "1.0.0" }),
       );
 
       // Create build directory
@@ -591,7 +578,7 @@ module.exports = Database;`;
       // Create package.json
       fs.writeFileSync(
         path.join(packageDir, "package.json"),
-        JSON.stringify({ name: "native-pkg", version: "1.0.0" })
+        JSON.stringify({ name: "native-pkg", version: "1.0.0" }),
       );
 
       // .node file is at package root level
@@ -631,16 +618,12 @@ module.exports = load('binding');`;
 
       // First, transform the code to generate the hashed filename
       const context = { parse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        jsFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, jsFilePath);
 
       expect(transformResult).not.toBeNull();
       expect(transformResult.code).toBeDefined();
       expect(transformResult.code).toMatch(
-        /require\("\.\/addon-[A-F0-9]{8}\.node\?native-require=[a-f0-9]{64}"\)/
+        /require\("\.\/addon-[A-F0-9]{8}\.node\?native-require=[a-f0-9]{64}"\)/,
       );
 
       // Extract the hashed filename from the transformed code
@@ -652,13 +635,13 @@ module.exports = load('binding');`;
       const resolveResult = await (plugin.resolveId as any).call(
         {},
         `./${hashedFilename}`,
-        jsFilePath
+        jsFilePath,
       );
 
       expect(resolveResult).toBeDefined();
       // resolveId now returns an object with { id, syntheticNamedExports }
       const resolvedId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
-      expect(resolvedId).toMatch(/^\0native:/);
+      expect(resolvedId.startsWith("\0native:")).toBe(true);
     });
 
     it("should resolve hashed filenames with query parameters", async () => {
@@ -677,11 +660,7 @@ module.exports = load('binding');`;
 
       // Transform to generate hashed filename
       const context = { parse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        jsFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, jsFilePath);
 
       const match = transformResult.code.match(/require\("\.\/([^"]+)"\)/);
       const hashedFilename = match![1];
@@ -690,13 +669,13 @@ module.exports = load('binding');`;
       const resolveResult = await (plugin.resolveId as any).call(
         {},
         `./${hashedFilename}?commonjs-external`,
-        jsFilePath
+        jsFilePath,
       );
 
       expect(resolveResult).toBeDefined();
       // resolveId now returns an object with { id, syntheticNamedExports }
       const resolvedId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
-      expect(resolvedId).toMatch(/^\0native:/);
+      expect(resolvedId.startsWith("\0native:")).toBe(true);
     });
 
     it("should resolve hash-only format filenames", async () => {
@@ -717,14 +696,10 @@ module.exports = load('binding');`;
 
       // Transform to generate hashed filename
       const context = { parse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        jsFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, jsFilePath);
 
       expect(transformResult.code).toMatch(
-        /require\("\.\/[A-F0-9]{8}\.node\?native-require=[a-f0-9]{64}"\)/
+        /require\("\.\/[A-F0-9]{8}\.node\?native-require=[a-f0-9]{64}"\)/,
       );
 
       const match = transformResult.code.match(/require\("\.\/([^"]+)"\)/);
@@ -734,13 +709,13 @@ module.exports = load('binding');`;
       const resolveResult = await (plugin.resolveId as any).call(
         {},
         `./${hashedFilename}`,
-        jsFilePath
+        jsFilePath,
       );
 
       expect(resolveResult).toBeDefined();
       // resolveId now returns an object with { id, syntheticNamedExports }
       const resolvedId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
-      expect(resolvedId).toMatch(/^\0native:/);
+      expect(resolvedId.startsWith("\0native:")).toBe(true);
     });
 
     it("should resolve node-gyp-build transformed paths", async () => {
@@ -751,11 +726,7 @@ module.exports = load('binding');`;
       });
 
       // Create prebuilds directory
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "addon.node"), "fake binary");
 
@@ -764,11 +735,7 @@ module.exports = load('binding');`;
 
       // Transform to generate hashed filename
       const context = { parse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        jsFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, jsFilePath);
 
       expect(transformResult).not.toBeNull();
       const match = transformResult.code.match(/require\("\.\/([^"]+)"\)/);
@@ -779,13 +746,13 @@ module.exports = load('binding');`;
       const resolveResult = await (plugin.resolveId as any).call(
         {},
         `./${hashedFilename}`,
-        jsFilePath
+        jsFilePath,
       );
 
       expect(resolveResult).toBeDefined();
       // resolveId now returns an object with { id, syntheticNamedExports }
       const resolvedId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
-      expect(resolvedId).toMatch(/^\0native:/);
+      expect(resolvedId.startsWith("\0native:")).toBe(true);
     });
   });
 
@@ -811,17 +778,11 @@ export { addon };`;
       const moduleAwareParse = (code: string) =>
         acornParse(code, { ecmaVersion: "latest", sourceType: "module" });
       const context = { parse: moduleAwareParse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        esmFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, esmFilePath);
 
       if (!transformResult) return;
 
-      const match = transformResult.code.match(
-        /require\(['"]([^'"]+\.node)['"]\)/
-      );
+      const match = transformResult.code.match(/require\(['"]([^'"]+\.node)['"]\)/);
       if (!match) return;
       const hashedFilename = match[1];
 
@@ -829,7 +790,7 @@ export { addon };`;
         {} as any,
         `./${hashedFilename}`,
         esmFilePath,
-        {}
+        {},
       );
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
@@ -857,17 +818,11 @@ const addon = bindings('addon');
 module.exports = { addon };`;
 
       const context = { parse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        cjsFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, cjsFilePath);
 
       if (!transformResult) return;
 
-      const match = transformResult.code.match(
-        /require\(['"]([^'"]+\.node)['"]\)/
-      );
+      const match = transformResult.code.match(/require\(['"]([^'"]+\.node)['"]\)/);
       if (!match) return;
       const hashedFilename = match[1];
 
@@ -875,7 +830,7 @@ module.exports = { addon };`;
         {} as any,
         `./${hashedFilename}`,
         cjsFilePath,
-        {}
+        {},
       );
 
       // resolveId now returns an object with { id, syntheticNamedExports }

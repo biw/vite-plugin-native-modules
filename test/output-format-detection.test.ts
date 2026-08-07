@@ -46,10 +46,7 @@ describe("Output Format Detection", () => {
       fs.mkdirSync(prebuildsDir, { recursive: true });
 
       // Create the native .node file
-      fs.writeFileSync(
-        path.join(prebuildsDir, "addon.node"),
-        Buffer.from("fake native module")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "addon.node"), Buffer.from("fake native module"));
 
       // Create package.json
       fs.writeFileSync(
@@ -57,7 +54,7 @@ describe("Output Format Detection", () => {
         JSON.stringify({
           name: "native-addon",
           main: "index.js",
-        })
+        }),
       );
 
       // Create CJS index.js that uses node-gyp-build pattern
@@ -69,7 +66,7 @@ try {
 } catch (e) {
   module.exports = { doSomething: function() {} };
 }
-`
+`,
       );
 
       // Create a fake node-gyp-build module
@@ -77,7 +74,7 @@ try {
       fs.mkdirSync(nodeGypBuildDir, { recursive: true });
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "package.json"),
-        JSON.stringify({ name: "node-gyp-build", main: "index.js" })
+        JSON.stringify({ name: "node-gyp-build", main: "index.js" }),
       );
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "index.js"),
@@ -86,7 +83,7 @@ try {
   const platform = process.platform;
   const arch = process.arch;
   return require(path.join(dir, 'prebuilds', platform + '-' + arch, 'addon.node'));
-};`
+};`,
       );
 
       // Create ESM entry point that imports the CJS native-addon
@@ -97,7 +94,7 @@ try {
         `import addon from 'native-addon';
 console.log(addon);
 export { addon };
-`
+`,
       );
 
       // Build with ESM output format for Node.js target
@@ -136,7 +133,7 @@ export { addon };
 
       // Find the main output chunk
       const mainChunk = buildOutput!.output.find(
-        (o): o is Rollup.OutputChunk => o.type === "chunk" && o.isEntry
+        (o): o is Rollup.OutputChunk => o.type === "chunk" && o.isEntry,
       );
       expect(mainChunk).toBeDefined();
 
@@ -157,21 +154,18 @@ export { addon };
       const prebuildsDir = path.join(packageDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
 
-      fs.writeFileSync(
-        path.join(prebuildsDir, "addon.node"),
-        Buffer.from("fake native module")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "addon.node"), Buffer.from("fake native module"));
 
       fs.writeFileSync(
         path.join(packageDir, "package.json"),
-        JSON.stringify({ name: "native-addon", main: "index.js" })
+        JSON.stringify({ name: "native-addon", main: "index.js" }),
       );
 
       fs.writeFileSync(
         path.join(packageDir, "index.js"),
         `'use strict';
 module.exports = require('node-gyp-build')(__dirname);
-`
+`,
       );
 
       // Create node-gyp-build
@@ -179,14 +173,14 @@ module.exports = require('node-gyp-build')(__dirname);
       fs.mkdirSync(nodeGypBuildDir, { recursive: true });
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "package.json"),
-        JSON.stringify({ name: "node-gyp-build", main: "index.js" })
+        JSON.stringify({ name: "node-gyp-build", main: "index.js" }),
       );
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "index.js"),
         `module.exports = function(dir) {
   const path = require('path');
   return require(path.join(dir, 'prebuilds', process.platform + '-' + process.arch, 'addon.node'));
-};`
+};`,
       );
 
       // Entry with top-level await (ESM feature that triggers the error)
@@ -200,7 +194,7 @@ const result = await Promise.resolve(addon);
 console.log(result);
 
 export { addon };
-`
+`,
       );
 
       // Build with ESM output for Node.js target
@@ -233,96 +227,81 @@ export { addon };
       expect(buildError).toBeNull();
     });
 
-    const nativeObjectExpression =
-      'Object.freeze({ marker: "native-value" })';
+    const nativeObjectExpression = 'Object.freeze({ marker: "native-value" })';
     const defaultOnlyNativeExpression = "function nativeValue() {}";
 
-    it.each(
-      [
-        {
-          description: "default namespace interop",
-          requireReturnsDefault: undefined,
-          nativeValueExpression: nativeObjectExpression,
-          expectedMarker: "native-value",
-          loader: "node-gyp-build",
-        },
-        {
-          description: "default-returning interop",
-          requireReturnsDefault: true,
-          nativeValueExpression: nativeObjectExpression,
-          expectedMarker: "native-value",
-          loader: "node-gyp-build",
-        },
-        {
-          description: "auto interop",
-          requireReturnsDefault: "auto",
-          nativeValueExpression: nativeObjectExpression,
-          expectedMarker: "native-value",
-          loader: "node-gyp-build",
-        },
-        {
-          description: "auto interop with a default-only module",
-          requireReturnsDefault: "auto",
-          nativeValueExpression: defaultOnlyNativeExpression,
-          expectedMarker: undefined,
-          loader: "node-gyp-build",
-        },
-        {
-          description: "preferred interop",
-          requireReturnsDefault: "preferred",
-          nativeValueExpression: nativeObjectExpression,
-          expectedMarker: "native-value",
-          loader: "node-gyp-build",
-        },
-        {
-          description: "namespace interop",
-          requireReturnsDefault: "namespace",
-          nativeValueExpression: nativeObjectExpression,
-          expectedMarker: "native-value",
-          loader: "node-gyp-build",
-        },
-        {
-          description: "per-module preferred interop",
-          requireReturnsDefault: (id: string) =>
-            id.startsWith("\0native:") ? ("preferred" as const) : false,
-          nativeValueExpression: nativeObjectExpression,
-          expectedMarker: "native-value",
-          loader: "node-gyp-build",
-        },
-        {
-          description: "auto interop with a direct native require",
-          requireReturnsDefault: "auto",
-          nativeValueExpression: defaultOnlyNativeExpression,
-          expectedMarker: undefined,
-          loader: "direct",
-        },
-      ] as const
-    )(
+    it.each([
+      {
+        description: "default namespace interop",
+        requireReturnsDefault: undefined,
+        nativeValueExpression: nativeObjectExpression,
+        expectedMarker: "native-value",
+        loader: "node-gyp-build",
+      },
+      {
+        description: "default-returning interop",
+        requireReturnsDefault: true,
+        nativeValueExpression: nativeObjectExpression,
+        expectedMarker: "native-value",
+        loader: "node-gyp-build",
+      },
+      {
+        description: "auto interop",
+        requireReturnsDefault: "auto",
+        nativeValueExpression: nativeObjectExpression,
+        expectedMarker: "native-value",
+        loader: "node-gyp-build",
+      },
+      {
+        description: "auto interop with a default-only module",
+        requireReturnsDefault: "auto",
+        nativeValueExpression: defaultOnlyNativeExpression,
+        expectedMarker: undefined,
+        loader: "node-gyp-build",
+      },
+      {
+        description: "preferred interop",
+        requireReturnsDefault: "preferred",
+        nativeValueExpression: nativeObjectExpression,
+        expectedMarker: "native-value",
+        loader: "node-gyp-build",
+      },
+      {
+        description: "namespace interop",
+        requireReturnsDefault: "namespace",
+        nativeValueExpression: nativeObjectExpression,
+        expectedMarker: "native-value",
+        loader: "node-gyp-build",
+      },
+      {
+        description: "per-module preferred interop",
+        requireReturnsDefault: (id: string) =>
+          id.startsWith("\0native:") ? ("preferred" as const) : false,
+        nativeValueExpression: nativeObjectExpression,
+        expectedMarker: "native-value",
+        loader: "node-gyp-build",
+      },
+      {
+        description: "auto interop with a direct native require",
+        requireReturnsDefault: "auto",
+        nativeValueExpression: defaultOnlyNativeExpression,
+        expectedMarker: undefined,
+        loader: "direct",
+      },
+    ] as const)(
       "should give bundled CommonJS code the native value with $description",
-      async ({
-        requireReturnsDefault,
-        nativeValueExpression,
-        expectedMarker,
-        loader,
-      }) => {
-        const packageDir = path.join(
-          tempDir,
-          "node_modules",
-          "native-addon"
-        );
+      async ({ requireReturnsDefault, nativeValueExpression, expectedMarker, loader }) => {
+        const packageDir = path.join(tempDir, "node_modules", "native-addon");
         const prebuildsDir = path.join(
           packageDir,
           "prebuilds",
-          `${process.platform}-${process.arch}`
+          `${process.platform}-${process.arch}`,
         );
         fs.mkdirSync(prebuildsDir, { recursive: true });
-        fs.writeFileSync(
-          path.join(prebuildsDir, "addon.node"),
-          Buffer.from("fake native module")
-        );
+        fs.writeFileSync(path.join(prebuildsDir, "addon.node"), Buffer.from("fake native module"));
         fs.writeFileSync(
           path.join(packageDir, "package.json"),
-          JSON.stringify({ name: "native-addon", main: "index.js" })
+          JSON.stringify({ name: "native-addon", main: "index.js" }),
         );
         fs.writeFileSync(
           path.join(packageDir, "index.js"),
@@ -335,29 +314,22 @@ module.exports = {
   marker: addon.marker,
   receivedNamespace: Object.prototype.hasOwnProperty.call(addon, 'default')
 };
-`
+`,
         );
 
-        const nodeGypBuildDir = path.join(
-          tempDir,
-          "node_modules",
-          "node-gyp-build"
-        );
+        const nodeGypBuildDir = path.join(tempDir, "node_modules", "node-gyp-build");
         fs.mkdirSync(nodeGypBuildDir, { recursive: true });
         fs.writeFileSync(
           path.join(nodeGypBuildDir, "package.json"),
-          JSON.stringify({ name: "node-gyp-build", main: "index.js" })
+          JSON.stringify({ name: "node-gyp-build", main: "index.js" }),
         );
         fs.writeFileSync(
           path.join(nodeGypBuildDir, "index.js"),
-          "module.exports = function () { throw new Error('not transformed'); };\n"
+          "module.exports = function () { throw new Error('not transformed'); };\n",
         );
 
         const entryPath = path.join(tempDir, "index.mjs");
-        fs.writeFileSync(
-          entryPath,
-          "import addon from 'native-addon'; export default addon;\n"
-        );
+        fs.writeFileSync(entryPath, "import addon from 'native-addon'; export default addon;\n");
 
         // Replace createRequire so the plugin's real virtual ESM wrapper remains
         // in the bundle while the test avoids loading a platform native binary.
@@ -399,26 +371,23 @@ export function createRequire() {
           plugins: [fakeNodeModule, nativeFilePlugin({ forced: true })],
         });
 
-        const buildOutput = result as
-          | Rollup.RollupOutput
-          | Rollup.RollupOutput[];
+        const buildOutput = result as Rollup.RollupOutput | Rollup.RollupOutput[];
         const output = Array.isArray(buildOutput) ? buildOutput[0] : buildOutput;
         const mainChunk = output.output.find(
-          (item): item is Rollup.OutputChunk =>
-            item.type === "chunk" && item.isEntry
+          (item): item is Rollup.OutputChunk => item.type === "chunk" && item.isEntry,
         );
         expect(mainChunk).toBeDefined();
 
-        const bundleUrl = `data:text/javascript;base64,${Buffer.from(
-          mainChunk!.code
-        ).toString("base64")}`;
+        const bundleUrl = `data:text/javascript;base64,${Buffer.from(mainChunk!.code).toString(
+          "base64",
+        )}`;
         const bundledModule = await import(/* @vite-ignore */ bundleUrl);
 
         expect(bundledModule.default).toEqual({
           marker: expectedMarker,
           receivedNamespace: false,
         });
-      }
+      },
     );
   });
 
@@ -438,21 +407,18 @@ export function createRequire() {
       const prebuildsDir = path.join(packageDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
 
-      fs.writeFileSync(
-        path.join(prebuildsDir, "addon.node"),
-        Buffer.from("fake native module")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "addon.node"), Buffer.from("fake native module"));
 
       fs.writeFileSync(
         path.join(packageDir, "package.json"),
-        JSON.stringify({ name: "native-addon", main: "index.js" })
+        JSON.stringify({ name: "native-addon", main: "index.js" }),
       );
 
       fs.writeFileSync(
         path.join(packageDir, "index.js"),
         `'use strict';
 module.exports = require('node-gyp-build')(__dirname);
-`
+`,
       );
 
       // Create node-gyp-build
@@ -460,14 +426,14 @@ module.exports = require('node-gyp-build')(__dirname);
       fs.mkdirSync(nodeGypBuildDir, { recursive: true });
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "package.json"),
-        JSON.stringify({ name: "node-gyp-build", main: "index.js" })
+        JSON.stringify({ name: "node-gyp-build", main: "index.js" }),
       );
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "index.js"),
         `module.exports = function(dir) {
   const path = require('path');
   return require(path.join(dir, 'prebuilds', process.platform + '-' + process.arch, 'addon.node'));
-};`
+};`,
       );
 
       // Create ESM entry (using import syntax)
@@ -477,7 +443,7 @@ module.exports = require('node-gyp-build')(__dirname);
         `import addon from 'native-addon';
 console.log(addon);
 export { addon };
-`
+`,
       );
 
       // Build with CJS output format for Node.js target
@@ -516,7 +482,7 @@ export { addon };
 
       // Find the main output chunk
       const mainChunk = buildOutput!.output.find(
-        (o): o is Rollup.OutputChunk => o.type === "chunk" && o.isEntry
+        (o): o is Rollup.OutputChunk => o.type === "chunk" && o.isEntry,
       );
       expect(mainChunk).toBeDefined();
 
@@ -539,21 +505,18 @@ export { addon };
       const prebuildsDir = path.join(packageDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
 
-      fs.writeFileSync(
-        path.join(prebuildsDir, "addon.node"),
-        Buffer.from("fake native module")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "addon.node"), Buffer.from("fake native module"));
 
       fs.writeFileSync(
         path.join(packageDir, "package.json"),
-        JSON.stringify({ name: "native-addon", main: "index.js" })
+        JSON.stringify({ name: "native-addon", main: "index.js" }),
       );
 
       fs.writeFileSync(
         path.join(packageDir, "index.js"),
         `'use strict';
 module.exports = require('node-gyp-build')(__dirname);
-`
+`,
       );
 
       // Create node-gyp-build
@@ -561,14 +524,14 @@ module.exports = require('node-gyp-build')(__dirname);
       fs.mkdirSync(nodeGypBuildDir, { recursive: true });
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "package.json"),
-        JSON.stringify({ name: "node-gyp-build", main: "index.js" })
+        JSON.stringify({ name: "node-gyp-build", main: "index.js" }),
       );
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "index.js"),
         `module.exports = function(dir) {
   const path = require('path');
   return require(path.join(dir, 'prebuilds', process.platform + '-' + process.arch, 'addon.node'));
-};`
+};`,
       );
 
       // Create entry
@@ -577,7 +540,7 @@ module.exports = require('node-gyp-build')(__dirname);
         entryPath,
         `import addon from 'native-addon';
 export default addon;
-`
+`,
       );
 
       // Build using lib mode with cjs format for Node.js target
@@ -614,7 +577,7 @@ export default addon;
       // Get the output (lib mode may return array)
       const output = Array.isArray(buildOutput) ? buildOutput[0] : buildOutput;
       const mainChunk = output!.output.find(
-        (o): o is Rollup.OutputChunk => o.type === "chunk" && o.isEntry
+        (o): o is Rollup.OutputChunk => o.type === "chunk" && o.isEntry,
       );
       expect(mainChunk).toBeDefined();
 
@@ -631,7 +594,7 @@ export default addon;
         entryPath,
         `import addon from "./addon.node";
 export default addon;
-`
+`,
       );
 
       const plugin = nativeFilePlugin({ forced: true });
@@ -651,23 +614,13 @@ export default addon;
         },
         plugins: [plugin],
       });
-      const buildOutputs = result as
-        | Rollup.RollupOutput
-        | Rollup.RollupOutput[];
-      const outputs = Array.isArray(buildOutputs)
-        ? buildOutputs
-        : [buildOutputs];
+      const buildOutputs = result as Rollup.RollupOutput | Rollup.RollupOutput[];
+      const outputs = Array.isArray(buildOutputs) ? buildOutputs : [buildOutputs];
       const chunks = outputs.flatMap((output) =>
-        output.output.filter(
-          (item): item is Rollup.OutputChunk => item.type === "chunk"
-        )
+        output.output.filter((item): item is Rollup.OutputChunk => item.type === "chunk"),
       );
-      const cjsChunk = chunks.find((chunk) =>
-        chunk.code.startsWith('"use strict"')
-      );
-      const esmChunk = chunks.find((chunk) =>
-        chunk.code.includes("export {")
-      );
+      const cjsChunk = chunks.find((chunk) => chunk.code.startsWith('"use strict"'));
+      const esmChunk = chunks.find((chunk) => chunk.code.includes("export {"));
 
       expect(cjsChunk).toBeDefined();
       expect(cjsChunk!.code).toMatch(/[A-F0-9]{8}\.node/);

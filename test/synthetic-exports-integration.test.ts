@@ -5,18 +5,12 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-function expectNativeModuleBundled(
-  result: Rollup.RollupOutput | Rollup.RollupOutput[]
-): void {
+function expectNativeModuleBundled(result: Rollup.RollupOutput | Rollup.RollupOutput[]): void {
   const outputs = Array.isArray(result) ? result : [result];
   const generated = outputs.flatMap((output) => output.output);
 
   expect(
-    generated.some(
-      (item) =>
-        item.type === "chunk" &&
-        /[A-F0-9]{8}\.node/.test(item.code)
-    )
+    generated.some((item) => item.type === "chunk" && /[A-F0-9]{8}\.node/.test(item.code)),
   ).toBe(true);
 }
 
@@ -38,9 +32,7 @@ describe("syntheticNamedExports integration", () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "synthetic-exports-test-")
-    );
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "synthetic-exports-test-"));
   });
 
   afterEach(() => {
@@ -56,10 +48,7 @@ describe("syntheticNamedExports integration", () => {
     // Isolate the plugin's virtual wrapper from Vite's generic asset resolver.
     plugin.enforce = "pre";
     fs.writeFileSync(nativePath, Buffer.from("fake native module"));
-    fs.writeFileSync(
-      entryPath,
-      `import addon from "./addon.node";\nconsole.log(addon);\n`
-    );
+    fs.writeFileSync(entryPath, `import addon from "./addon.node";\nconsole.log(addon);\n`);
 
     const result = await build({
       root: tempDir,
@@ -77,9 +66,7 @@ describe("syntheticNamedExports integration", () => {
       plugins: [plugin],
     });
 
-    expectNativeModuleBundled(
-      result as Rollup.RollupOutput | Rollup.RollupOutput[]
-    );
+    expectNativeModuleBundled(result as Rollup.RollupOutput | Rollup.RollupOutput[]);
   });
 
   describe("bufferutil-style pattern (node-gyp-build)", () => {
@@ -102,7 +89,7 @@ describe("syntheticNamedExports integration", () => {
       // Create the native module
       fs.writeFileSync(
         path.join(prebuildsDir, "bufferutil.node"),
-        Buffer.from("fake native module")
+        Buffer.from("fake native module"),
       );
 
       // Create package.json
@@ -111,7 +98,7 @@ describe("syntheticNamedExports integration", () => {
         JSON.stringify({
           name: "bufferutil",
           main: "index.js",
-        })
+        }),
       );
 
       // Create index.js that uses node-gyp-build pattern
@@ -123,7 +110,7 @@ try {
 } catch (e) {
   module.exports = { mask: function() {}, unmask: function() {} };
 }
-`
+`,
       );
 
       // Create a fake node-gyp-build module
@@ -131,7 +118,7 @@ try {
       fs.mkdirSync(nodeGypBuildDir, { recursive: true });
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "package.json"),
-        JSON.stringify({ name: "node-gyp-build", main: "index.js" })
+        JSON.stringify({ name: "node-gyp-build", main: "index.js" }),
       );
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "index.js"),
@@ -140,7 +127,7 @@ try {
   const platform = process.platform;
   const arch = process.arch;
   return require(path.join(dir, 'prebuilds', platform + '-' + arch, 'bufferutil.node'));
-};`
+};`,
       );
 
       // Create main entry point that imports bufferutil
@@ -149,7 +136,7 @@ try {
         entryPath,
         `import { mask } from 'bufferutil';
 console.log(mask);
-`
+`,
       );
 
       const result = await build({
@@ -171,9 +158,7 @@ console.log(mask);
         plugins: [nativeFilePlugin({ forced: true })],
       });
 
-      expectNativeModuleBundled(
-        result as Rollup.RollupOutput | Rollup.RollupOutput[]
-      );
+      expectNativeModuleBundled(result as Rollup.RollupOutput | Rollup.RollupOutput[]);
     });
 
     /**
@@ -188,17 +173,14 @@ console.log(mask);
       const prebuildsDir = path.join(addonDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
 
-      fs.writeFileSync(
-        path.join(prebuildsDir, "addon.node"),
-        Buffer.from("fake native module")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "addon.node"), Buffer.from("fake native module"));
 
       fs.writeFileSync(
         path.join(addonDir, "package.json"),
         JSON.stringify({
           name: "native-addon",
           main: "index.js",
-        })
+        }),
       );
 
       fs.writeFileSync(
@@ -209,7 +191,7 @@ try {
 } catch (e) {
   module.exports = { doSomething: function() {} };
 }
-`
+`,
       );
 
       // Create node-gyp-build
@@ -217,7 +199,7 @@ try {
       fs.mkdirSync(nodeGypBuildDir, { recursive: true });
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "package.json"),
-        JSON.stringify({ name: "node-gyp-build", main: "index.js" })
+        JSON.stringify({ name: "node-gyp-build", main: "index.js" }),
       );
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "index.js"),
@@ -226,7 +208,7 @@ try {
   const platform = process.platform;
   const arch = process.arch;
   return require(path.join(dir, 'prebuilds', platform + '-' + arch, 'addon.node'));
-};`
+};`,
       );
 
       // Create a wrapper module that re-exports with export *
@@ -238,14 +220,14 @@ try {
           name: "addon-wrapper",
           main: "index.js",
           type: "module",
-        })
+        }),
       );
       // This pattern can trigger the syntheticNamedExports error
       fs.writeFileSync(
         path.join(wrapperDir, "index.js"),
         `export * from 'native-addon';
 export { default } from 'native-addon';
-`
+`,
       );
 
       // Create entry point
@@ -254,7 +236,7 @@ export { default } from 'native-addon';
         entryPath,
         `import addon from 'addon-wrapper';
 console.log(addon);
-`
+`,
       );
 
       const result = await build({
@@ -276,9 +258,7 @@ console.log(addon);
         plugins: [nativeFilePlugin({ forced: true })],
       });
 
-      expectNativeModuleBundled(
-        result as Rollup.RollupOutput | Rollup.RollupOutput[]
-      );
+      expectNativeModuleBundled(result as Rollup.RollupOutput | Rollup.RollupOutput[]);
     });
 
     /**
@@ -293,14 +273,11 @@ console.log(addon);
       const prebuildsDir = path.join(nativeDir, "prebuilds", `${platform}-${arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
 
-      fs.writeFileSync(
-        path.join(prebuildsDir, "native.node"),
-        Buffer.from("fake native module")
-      );
+      fs.writeFileSync(path.join(prebuildsDir, "native.node"), Buffer.from("fake native module"));
 
       fs.writeFileSync(
         path.join(nativeDir, "package.json"),
-        JSON.stringify({ name: "my-native", main: "index.js" })
+        JSON.stringify({ name: "my-native", main: "index.js" }),
       );
 
       fs.writeFileSync(
@@ -311,7 +288,7 @@ try {
 } catch (e) {
   module.exports = { foo: function() {}, bar: function() {} };
 }
-`
+`,
       );
 
       // Create node-gyp-build
@@ -319,7 +296,7 @@ try {
       fs.mkdirSync(nodeGypBuildDir, { recursive: true });
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "package.json"),
-        JSON.stringify({ name: "node-gyp-build", main: "index.js" })
+        JSON.stringify({ name: "node-gyp-build", main: "index.js" }),
       );
       fs.writeFileSync(
         path.join(nodeGypBuildDir, "index.js"),
@@ -328,7 +305,7 @@ try {
   const platform = process.platform;
   const arch = process.arch;
   return require(path.join(dir, 'prebuilds', platform + '-' + arch, 'native.node'));
-};`
+};`,
       );
 
       // Entry point with synthetic named imports
@@ -337,7 +314,7 @@ try {
         entryPath,
         `import { foo, bar } from 'my-native';
 console.log(foo, bar);
-`
+`,
       );
 
       const result = await build({
@@ -359,9 +336,7 @@ console.log(foo, bar);
         plugins: [nativeFilePlugin({ forced: true })],
       });
 
-      expectNativeModuleBundled(
-        result as Rollup.RollupOutput | Rollup.RollupOutput[]
-      );
+      expectNativeModuleBundled(result as Rollup.RollupOutput | Rollup.RollupOutput[]);
     });
   });
 });

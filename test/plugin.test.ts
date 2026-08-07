@@ -10,18 +10,9 @@ import { parse as acornParse } from "acorn";
 // Wrapper to provide the same parse signature as Rollup
 const parse = (code: string) => acornParse(code, { ecmaVersion: "latest" });
 
-function nativeFilename(
-  originalFilename: string,
-  content: Buffer,
-  hashOnly = false
-): string {
+function nativeFilename(originalFilename: string, content: Buffer, hashOnly = false): string {
   const extension = path.extname(originalFilename);
-  const hash = crypto
-    .createHash("md5")
-    .update(content)
-    .digest("hex")
-    .slice(0, 8)
-    .toUpperCase();
+  const hash = crypto.createHash("md5").update(content).digest("hex").slice(0, 8).toUpperCase();
 
   return hashOnly
     ? `${hash}${extension}`
@@ -96,7 +87,7 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test.node",
         importerPath,
-        {}
+        {},
       );
 
       expect(result).toBeDefined();
@@ -119,7 +110,7 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test.js",
         "/fake/path/index.js",
-        {}
+        {},
       );
 
       expect(result).toBeNull();
@@ -142,7 +133,7 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./nonexistent.node",
         importerPath,
-        {}
+        {},
       );
 
       expect(result).toBeNull();
@@ -159,12 +150,7 @@ describe("nativeFilePlugin", () => {
         mode: "production",
       });
 
-      const result = await (plugin.resolveId as any).call(
-        {} as any,
-        "./test.node",
-        undefined,
-        {}
-      );
+      const result = await (plugin.resolveId as any).call({} as any, "./test.node", undefined, {});
 
       expect(result).toBeNull();
     });
@@ -189,7 +175,7 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test.node",
         importerPath,
-        {}
+        {},
       );
 
       expect(result).toBeNull();
@@ -215,7 +201,7 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test.node",
         importerPath,
-        {}
+        {},
       );
 
       expect(result).toBeDefined();
@@ -244,14 +230,14 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test.node",
         importerPath,
-        {}
+        {},
       );
 
       const result2 = await (plugin.resolveId as any).call(
         {} as any,
         "./test.node",
         importerPath,
-        {}
+        {},
       );
 
       expect(result1).toBe(result2);
@@ -280,14 +266,14 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test1.node",
         importerPath,
-        {}
+        {},
       );
 
       const result2 = await (plugin.resolveId as any).call(
         {} as any,
         "./test2.node",
         importerPath,
-        {}
+        {},
       );
 
       expect(result1).not.toBe(result2);
@@ -314,7 +300,7 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test.node",
         importerPath,
-        {}
+        {},
       );
 
       expect(virtualId).toBeDefined();
@@ -514,17 +500,11 @@ describe("nativeFilePlugin", () => {
       fs.mkdirSync(path.dirname(nativeFile), { recursive: true });
       fs.writeFileSync(nativeFile, Buffer.from("windows path binary"));
 
-      const windowsStyleImporter = path
-        .join(pkgDir, "lib", "index.js")
-        .replace(/\//g, "\\");
+      const windowsStyleImporter = path.join(pkgDir, "lib", "index.js").replace(/\//g, "\\");
       const code = `const addon = require(${JSON.stringify(nativeFile)});`;
 
       const context = { parse };
-      const result = (plugin.transform as any).call(
-        context,
-        code,
-        windowsStyleImporter
-      );
+      const result = (plugin.transform as any).call(context, code, windowsStyleImporter);
 
       expect(result).not.toBeNull();
       expect(result.code).toContain("addon-");
@@ -668,7 +648,7 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test.node",
         importerPath,
-        {}
+        {},
       );
 
       expect(virtualId).toBeDefined();
@@ -689,7 +669,7 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test.node",
         esmImporterPath,
-        {}
+        {},
       );
       const esmLoadResult = await (plugin.load as any).call({} as any, esmVirtualId);
       expect(esmLoadResult).toBeDefined();
@@ -719,18 +699,13 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test.node",
         importerPath,
-        {}
+        {},
       );
-      const directLoadResult = await (plugin.load as any).call(
-        {} as any,
-        directVirtualId
-      );
+      const directLoadResult = await (plugin.load as any).call({} as any, directVirtualId);
 
       expect(directLoadResult).not.toContain("__vitePluginNativeModule");
 
-      const hashedFilename = directLoadResult.match(
-        /__require\('\.\/([^']+\.node)'\)/
-      )?.[1];
+      const hashedFilename = directLoadResult.match(/__require\('\.\/([^']+\.node)'\)/)?.[1];
       expect(hashedFilename).toBeDefined();
 
       const requireResolution = await (plugin.resolveId as any).call(
@@ -740,21 +715,14 @@ describe("nativeFilePlugin", () => {
           .update(nodeFilePath)
           .digest("hex")}`,
         importerPath,
-        {}
+        {},
       );
       const requireVirtualId =
-        typeof requireResolution === "object"
-          ? requireResolution.id
-          : requireResolution;
-      const requireLoadResult = await (plugin.load as any).call(
-        {} as any,
-        requireVirtualId
-      );
+        typeof requireResolution === "object" ? requireResolution.id : requireResolution;
+      const requireLoadResult = await (plugin.load as any).call({} as any, requireVirtualId);
 
       expect(requireVirtualId).toContain("?native-require");
-      expect(requireLoadResult).toContain(
-        "export const __vitePluginNativeModule = true;"
-      );
+      expect(requireLoadResult).toContain("export const __vitePluginNativeModule = true;");
     });
 
     it("should return null for non-virtual modules", async () => {
@@ -762,10 +730,7 @@ describe("nativeFilePlugin", () => {
 
       expect(plugin.load).toBeDefined();
 
-      const result = await (plugin.load as any).call(
-        {} as any,
-        "/some/normal/file.js"
-      );
+      const result = await (plugin.load as any).call({} as any, "/some/normal/file.js");
       expect(result).toBeNull();
     });
 
@@ -785,7 +750,7 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test.node",
         importerPath,
-        {}
+        {},
       );
 
       expect(virtualId).toBeDefined();
@@ -823,7 +788,7 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test.node",
         cjsFilePath,
-        {}
+        {},
       );
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
@@ -851,7 +816,7 @@ describe("nativeFilePlugin", () => {
         {} as any,
         "./test.node",
         esmFilePath,
-        {}
+        {},
       );
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
@@ -907,12 +872,7 @@ describe("nativeFilePlugin", () => {
             : undefined,
         },
       });
-      await (plugin.resolveId as any).call(
-        {},
-        "./watch.node",
-        importerPath,
-        {}
-      );
+      await (plugin.resolveId as any).call({}, "./watch.node", importerPath, {});
 
       const createContext = (emittedFiles: any[], watchMode = true) => ({
         emitFile: (file: any) => {
@@ -921,18 +881,13 @@ describe("nativeFilePlugin", () => {
         },
         meta: { watchMode },
       });
-      const startBuild = (context: any = {}) =>
-        (plugin.buildStart as any).call(context, {});
-      const generate = (
-        context: any,
-        output = outputDirectory,
-        isWrite = true
-      ) =>
+      const startBuild = (context: any = {}) => (plugin.buildStart as any).call(context, {});
+      const generate = (context: any, output = outputDirectory, isWrite = true) =>
         (plugin.generateBundle as any).call(
           context,
           { dir: output },
           bundleReferencing(nativeFilename("watch.node", nodeFileContent)),
-          isWrite
+          isWrite,
         );
 
       return {
@@ -971,19 +926,14 @@ describe("nativeFilePlugin", () => {
       };
 
       // Resolve to populate internal map
-      await (plugin.resolveId as any).call(
-        mockContext,
-        "./test.node",
-        importerPath,
-        {}
-      );
+      await (plugin.resolveId as any).call(mockContext, "./test.node", importerPath, {});
 
       // Generate bundle
       (plugin.generateBundle as any).call(
         mockContext,
         {},
         bundleReferencing(nativeFilename("test.node", testContent)),
-        false
+        false,
       );
 
       expect(emittedFiles.length).toBeGreaterThan(0);
@@ -1016,7 +966,7 @@ describe("nativeFilePlugin", () => {
         harness.startBuild(context);
         harness.generate(context, harness.outputDirectory, isWrite);
         expect(emittedFiles).toHaveLength(expectedEmits);
-      }
+      },
     );
 
     it("should emit once per output directory across watch rebuilds", async () => {
@@ -1086,11 +1036,7 @@ describe("nativeFilePlugin", () => {
       expect(emissions[1]).toHaveLength(0);
 
       // The output that scheduled the asset fails, while its sibling completes.
-      (harness.plugin.writeBundle as any)?.call(
-        contexts[1],
-        { dir: harness.outputDirectory },
-        {}
-      );
+      (harness.plugin.writeBundle as any)?.call(contexts[1], { dir: harness.outputDirectory }, {});
 
       harness.startBuild(contexts[2]);
       harness.generate(contexts[2]);
@@ -1111,9 +1057,7 @@ describe("nativeFilePlugin", () => {
       harness.generate(context);
       expect(emittedFiles).toHaveLength(1);
 
-      fs.rmSync(
-        path.join(harness.outputDirectory, emittedFiles[0].fileName)
-      );
+      fs.rmSync(path.join(harness.outputDirectory, emittedFiles[0].fileName));
 
       harness.startBuild(context);
       harness.generate(context);
@@ -1129,29 +1073,26 @@ describe("nativeFilePlugin", () => {
         condition: "same-size corrupt",
         corrupt: (source: Buffer) => Buffer.alloc(source.length),
       },
-    ])(
-      "should replace a $condition native asset on the next watch build",
-      async ({ corrupt }) => {
-        const harness = await createWatchHarness();
-        const emittedFiles: any[] = [];
-        const context = harness.createContext(emittedFiles);
+    ])("should replace a $condition native asset on the next watch build", async ({ corrupt }) => {
+      const harness = await createWatchHarness();
+      const emittedFiles: any[] = [];
+      const context = harness.createContext(emittedFiles);
 
-        harness.startBuild(context);
-        harness.generate(context);
-        expect(emittedFiles).toHaveLength(1);
+      harness.startBuild(context);
+      harness.generate(context);
+      expect(emittedFiles).toHaveLength(1);
 
-        const emittedFile = emittedFiles[0];
-        fs.mkdirSync(harness.outputDirectory, { recursive: true });
-        fs.writeFileSync(
-          path.join(harness.outputDirectory, emittedFile.fileName),
-          corrupt(emittedFile.source)
-        );
+      const emittedFile = emittedFiles[0];
+      fs.mkdirSync(harness.outputDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(harness.outputDirectory, emittedFile.fileName),
+        corrupt(emittedFile.source),
+      );
 
-        harness.startBuild(context);
-        harness.generate(context);
-        expect(emittedFiles).toHaveLength(2);
-      }
-    );
+      harness.startBuild(context);
+      harness.generate(context);
+      expect(emittedFiles).toHaveLength(2);
+    });
 
     it("should reuse an existing native asset after watcher restart", async () => {
       const firstEmissions: any[] = [];
@@ -1164,8 +1105,7 @@ describe("nativeFilePlugin", () => {
 
       const restartedEmissions: any[] = [];
       const restartedWatcher = await createWatchHarness();
-      const restartedContext =
-        restartedWatcher.createContext(restartedEmissions);
+      const restartedContext = restartedWatcher.createContext(restartedEmissions);
 
       restartedWatcher.startBuild(restartedContext);
       restartedWatcher.generate(restartedContext);
@@ -1213,7 +1153,7 @@ describe("nativeFilePlugin", () => {
         harness.generate(context);
 
         expect(emittedFiles).toHaveLength(expectedEmits);
-      }
+      },
     );
   });
 
@@ -1236,21 +1176,14 @@ describe("nativeFilePlugin", () => {
       };
 
       // Resolve to populate internal map
-      await (plugin.resolveId as any).call(
-        mockContext,
-        "./addon.node",
-        importerPath,
-        {}
-      );
+      await (plugin.resolveId as any).call(mockContext, "./addon.node", importerPath, {});
 
       // Generate bundle to emit files
       (plugin.generateBundle as any).call(
         mockContext,
         {},
-        bundleReferencing(
-          nativeFilename("addon.node", Buffer.from("fake binary"))
-        ),
-        false
+        bundleReferencing(nativeFilename("addon.node", Buffer.from("fake binary"))),
+        false,
       );
 
       expect(emittedFiles.length).toBeGreaterThan(0);
@@ -1277,21 +1210,14 @@ describe("nativeFilePlugin", () => {
       };
 
       // Resolve to populate internal map
-      await (plugin.resolveId as any).call(
-        mockContext,
-        "./addon.node",
-        importerPath,
-        {}
-      );
+      await (plugin.resolveId as any).call(mockContext, "./addon.node", importerPath, {});
 
       // Generate bundle to emit files
       (plugin.generateBundle as any).call(
         mockContext,
         {},
-        bundleReferencing(
-          nativeFilename("addon.node", Buffer.from("fake binary"), true)
-        ),
-        false
+        bundleReferencing(nativeFilename("addon.node", Buffer.from("fake binary"), true)),
+        false,
       );
 
       expect(emittedFiles.length).toBeGreaterThan(0);
@@ -1320,21 +1246,14 @@ describe("nativeFilePlugin", () => {
       };
 
       // Resolve to populate internal map
-      await (plugin.resolveId as any).call(
-        mockContext,
-        "./native.node",
-        importerPath,
-        {}
-      );
+      await (plugin.resolveId as any).call(mockContext, "./native.node", importerPath, {});
 
       // Generate bundle to emit files
       (plugin.generateBundle as any).call(
         mockContext,
         {},
-        bundleReferencing(
-          nativeFilename("native.node", Buffer.from("fake binary"))
-        ),
-        false
+        bundleReferencing(nativeFilename("native.node", Buffer.from("fake binary"))),
+        false,
       );
 
       expect(emittedFiles.length).toBeGreaterThan(0);
@@ -1366,7 +1285,7 @@ describe("nativeFilePlugin", () => {
         mockContext,
         {},
         bundleReferencing(nativeFilename("first.node", content, true)),
-        false
+        false,
       );
 
       expect(emittedFiles).toHaveLength(1);
@@ -1382,7 +1301,7 @@ describe("nativeFilePlugin", () => {
       const firstContent = Buffer.from("collision-83147");
       const secondContent = Buffer.from("collision-143822");
       expect(crypto.createHash("md5").update(firstContent).digest("hex").slice(0, 8)).toBe(
-        crypto.createHash("md5").update(secondContent).digest("hex").slice(0, 8)
+        crypto.createHash("md5").update(secondContent).digest("hex").slice(0, 8),
       );
 
       fs.writeFileSync(path.join(tempDir, "first.node"), firstContent);
@@ -1400,10 +1319,10 @@ describe("nativeFilePlugin", () => {
           mockContext,
           {},
           bundleReferencing(nativeFilename("first.node", firstContent, true)),
-          false
-        )
+          false,
+        ),
       ).toThrow(
-        "Native files produced the same output name with different contents: 94141742.node"
+        "Native files produced the same output name with different contents: 94141742.node",
       );
     });
   });

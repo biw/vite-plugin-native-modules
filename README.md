@@ -97,13 +97,13 @@ nativeFilePlugin({
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-This repository uses pnpm for dependency management and development workflows:
+This repository uses Vite+ for its development workflow (with pnpm as the package manager):
 
 ```bash
-pnpm install
-pnpm lint
+vp install
+vp check
 pnpm test
-pnpm build
+vp pack
 ```
 
 ## License

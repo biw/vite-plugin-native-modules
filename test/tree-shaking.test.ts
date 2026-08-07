@@ -17,17 +17,8 @@ describe("tree-shaken native modules", () => {
   });
 
   function createPackage(): string {
-    const packageDirectory = path.join(
-      tempDir,
-      "node_modules",
-      "fake-native-pkg"
-    );
-    const nativeModulePath = path.join(
-      packageDirectory,
-      "build",
-      "Release",
-      "fake.node"
-    );
+    const packageDirectory = path.join(tempDir, "node_modules", "fake-native-pkg");
+    const nativeModulePath = path.join(packageDirectory, "build", "Release", "fake.node");
 
     fs.mkdirSync(path.dirname(nativeModulePath), { recursive: true });
     fs.writeFileSync(nativeModulePath, "not a real binary");
@@ -39,13 +30,13 @@ describe("tree-shaken native modules", () => {
         type: "module",
         main: "index.js",
         sideEffects: false,
-      })
+      }),
     );
     fs.writeFileSync(
       path.join(packageDirectory, "index.js"),
       `export const plainHelper = () => "no native code needed";
 export { nativeFeature } from "./native.js";
-`
+`,
     );
     fs.writeFileSync(
       path.join(packageDirectory, "native.js"),
@@ -54,14 +45,14 @@ export { nativeFeature } from "./native.js";
 const addon = createRequire(import.meta.url)("./build/Release/fake.node");
 
 export const nativeFeature = () => addon.doSomething();
-`
+`,
     );
 
     return packageDirectory;
   }
 
   async function buildEntry(
-    source: string
+    source: string,
   ): Promise<Array<Rollup.OutputAsset | Rollup.OutputChunk>> {
     const entryPath = path.join(tempDir, "src", "index.js");
     fs.mkdirSync(path.dirname(entryPath), { recursive: true });
@@ -85,11 +76,11 @@ export const nativeFeature = () => addon.doSomething();
   }
 
   function nativeAssets(
-    output: Array<Rollup.OutputAsset | Rollup.OutputChunk>
+    output: Array<Rollup.OutputAsset | Rollup.OutputChunk>,
   ): Rollup.OutputAsset[] {
     return output.filter(
       (item): item is Rollup.OutputAsset =>
-        item.type === "asset" && item.fileName.endsWith(".node")
+        item.type === "asset" && item.fileName.endsWith(".node"),
     );
   }
 
@@ -101,13 +92,9 @@ export const nativeFeature = () => addon.doSomething();
 export const handler = () => plainHelper();
 `);
 
-    const chunks = output.filter(
-      (item): item is Rollup.OutputChunk => item.type === "chunk"
-    );
+    const chunks = output.filter((item): item is Rollup.OutputChunk => item.type === "chunk");
 
-    expect(chunks.some((chunk) => chunk.code.includes("plainHelper"))).toBe(
-      true
-    );
+    expect(chunks.some((chunk) => chunk.code.includes("plainHelper"))).toBe(true);
     expect(chunks.some((chunk) => chunk.code.includes("fake.node"))).toBe(false);
     expect(nativeAssets(output)).toEqual([]);
   });
@@ -121,13 +108,9 @@ export const handler = () => nativeFeature();
 `);
 
     const assets = nativeAssets(output);
-    const chunks = output.filter(
-      (item): item is Rollup.OutputChunk => item.type === "chunk"
-    );
+    const chunks = output.filter((item): item is Rollup.OutputChunk => item.type === "chunk");
 
     expect(assets).toHaveLength(1);
-    expect(
-      chunks.some((chunk) => chunk.code.includes(assets[0].fileName))
-    ).toBe(true);
+    expect(chunks.some((chunk) => chunk.code.includes(assets[0].fileName))).toBe(true);
   });
 });

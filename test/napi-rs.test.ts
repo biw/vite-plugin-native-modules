@@ -7,8 +7,7 @@ import os from "node:os";
 import { parse as acornParse } from "acorn";
 
 // Wrapper to provide the same parse signature as Rollup
-const parse = (code: string) =>
-  acornParse(code, { ecmaVersion: "latest", sourceType: "module" });
+const parse = (code: string) => acornParse(code, { ecmaVersion: "latest", sourceType: "module" });
 
 /**
  * Tests for NAPI-RS auto-generated loader support
@@ -276,7 +275,7 @@ describe("NAPI-RS Support", () => {
       const currentPlatformFile = `libsql.${platform}-${arch}.node`;
       fs.writeFileSync(
         path.join(tempDir, currentPlatformFile),
-        Buffer.from("current platform binding")
+        Buffer.from("current platform binding"),
       );
 
       // Also create a file for a different platform that should NOT be processed
@@ -447,7 +446,7 @@ describe("NAPI-RS Support", () => {
       // Create package.json pointing to the .node file
       fs.writeFileSync(
         path.join(packageDir, "package.json"),
-        JSON.stringify({ name: `@libsql/${platform}-${arch}`, main: nodeFileName })
+        JSON.stringify({ name: `@libsql/${platform}-${arch}`, main: nodeFileName }),
       );
 
       // The NAPI-RS loader code that uses the npm package fallback
@@ -498,7 +497,7 @@ describe("NAPI-RS Support", () => {
       // Package.json with main pointing to the .node file
       fs.writeFileSync(
         path.join(packageDir, "package.json"),
-        JSON.stringify({ name: "@test/native", main: "binding.node" })
+        JSON.stringify({ name: "@test/native", main: "binding.node" }),
       );
 
       // Code that requires the package (include .node reference to trigger transform)
@@ -531,14 +530,11 @@ describe("NAPI-RS Support", () => {
       const packageDir = path.join(tempDir, "node_modules", "native-addon");
       fs.mkdirSync(packageDir, { recursive: true });
 
-      fs.writeFileSync(
-        path.join(packageDir, "index.node"),
-        Buffer.from("index native binding")
-      );
+      fs.writeFileSync(path.join(packageDir, "index.node"), Buffer.from("index native binding"));
 
       fs.writeFileSync(
         path.join(packageDir, "package.json"),
-        JSON.stringify({ name: "native-addon" })
+        JSON.stringify({ name: "native-addon" }),
         // No main field - should default to index.node
       );
 
@@ -572,14 +568,11 @@ describe("NAPI-RS Support", () => {
       const packageDir = path.join(tempDir, "node_modules", "regular-package");
       fs.mkdirSync(packageDir, { recursive: true });
 
-      fs.writeFileSync(
-        path.join(packageDir, "index.js"),
-        "module.exports = { foo: 'bar' };"
-      );
+      fs.writeFileSync(path.join(packageDir, "index.js"), "module.exports = { foo: 'bar' };");
 
       fs.writeFileSync(
         path.join(packageDir, "package.json"),
-        JSON.stringify({ name: "regular-package", main: "index.js" })
+        JSON.stringify({ name: "regular-package", main: "index.js" }),
       );
 
       const jsFilePath = path.join(tempDir, "index.js");
@@ -624,7 +617,7 @@ describe("NAPI-RS Support", () => {
         JSON.stringify({
           name: `@libsql/${platform}-${arch}`,
           main: "index.node",
-        })
+        }),
       );
 
       // Code uses template literal require like real libsql does
@@ -673,7 +666,7 @@ describe("NAPI-RS Support", () => {
         JSON.stringify({
           name: `@nativelib/${platform}-${arch}-binding`,
           main: "native.node",
-        })
+        }),
       );
 
       const jsFilePath = path.join(tempDir, "index.js");
@@ -749,11 +742,7 @@ describe("NAPI-RS Support", () => {
       const code = `const native = require('./native.node');`;
 
       const context = { parse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        jsFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, jsFilePath);
 
       expect(transformResult).toBeDefined();
 
@@ -767,13 +756,12 @@ describe("NAPI-RS Support", () => {
         {} as any,
         `./${hashedFilename}`,
         jsFilePath,
-        {}
+        {},
       );
 
       expect(resolveResult).toBeDefined();
       // resolveId returns { id, syntheticNamedExports } to enable named imports
-      const virtualId =
-        typeof resolveResult === "object" ? resolveResult.id : resolveResult;
+      const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       expect(virtualId).toContain("\0native:");
     });
 
@@ -800,17 +788,13 @@ describe("NAPI-RS Support", () => {
       const moduleAwareParse = (code: string) =>
         acornParse(code, { ecmaVersion: "latest", sourceType: "module" });
       const context = { parse: moduleAwareParse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        esmFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, esmFilePath);
 
       expect(transformResult).toBeDefined();
 
       // Extract hashed filename - try multiple patterns
       let match = transformResult.code.match(
-        /createRequire\(import\.meta\.url\)\("\.\/([^"]+\.node)"\)/
+        /createRequire\(import\.meta\.url\)\("\.\/([^"]+\.node)"\)/,
       );
       if (!match) {
         match = transformResult.code.match(/require\("\.\/([^"]+\.node)"\)/);
@@ -826,11 +810,10 @@ describe("NAPI-RS Support", () => {
         {} as any,
         `./${hashedFilename}`,
         esmFilePath,
-        {}
+        {},
       );
 
-      const virtualId =
-        typeof resolveResult === "object" ? resolveResult.id : resolveResult;
+      const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
 
       // Test load hook output
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
@@ -866,7 +849,7 @@ describe("NAPI-RS Support", () => {
         JSON.stringify({
           name: `@libsql/${platform}-${arch}`,
           main: "index.node",
-        })
+        }),
       );
 
       // Code that destructures named exports (like libsql does)
@@ -888,11 +871,7 @@ describe("NAPI-RS Support", () => {
       `;
 
       const context = { parse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        jsFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, jsFilePath);
 
       expect(transformResult).toBeDefined();
       expect(transformResult.code).toBeDefined();
@@ -911,13 +890,12 @@ describe("NAPI-RS Support", () => {
         {} as any,
         `./${match![1]}`,
         jsFilePath,
-        {}
+        {},
       );
 
       // resolveId returns { id, syntheticNamedExports } to enable named imports
       expect(resolveResult).toBeDefined();
-      const virtualId =
-        typeof resolveResult === "object" ? resolveResult.id : resolveResult;
+      const virtualId = typeof resolveResult === "object" ? resolveResult.id : resolveResult;
       expect(virtualId).toContain("\0native:");
     });
   });
