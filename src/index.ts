@@ -586,7 +586,7 @@ export default function nativeFilePlugin(options: NativeFilePluginOptions = {}):
     return detectModuleType(fileId, code);
   }
 
-  return {
+  const plugin: Plugin = {
     buildStart() {
       // A pending emission belongs only to its current build attempt. If that
       // build failed before the output write, the next watch build must try again.
@@ -736,6 +736,8 @@ export default nativeModule;
     },
 
     name,
+
+    enforce: "pre",
 
     async resolveId(source, importer) {
       // Check if enabled
@@ -1698,4 +1700,17 @@ export default nativeModule;
       return null;
     },
   };
+
+  const generateBundle = plugin.generateBundle;
+  if (typeof generateBundle === "function") {
+    plugin.generateBundle = {
+      call(context: unknown, ...args: unknown[]) {
+        return Reflect.apply(generateBundle, context, args);
+      },
+      handler: generateBundle,
+      order: "post",
+    } as Plugin["generateBundle"];
+  }
+
+  return plugin;
 }
