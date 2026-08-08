@@ -52,25 +52,13 @@ describe("Prebuild Packages Support (Issue #18)", () => {
       });
 
       // Simulate better-sqlite3 structure
-      const nodeModulesDir = path.join(
-        tempDir,
-        "node_modules",
-        "better-sqlite3"
-      );
+      const nodeModulesDir = path.join(tempDir, "node_modules", "better-sqlite3");
       fs.mkdirSync(path.join(nodeModulesDir, "build", "Release"), {
         recursive: true,
       });
 
-      const sqliteNodePath = path.join(
-        nodeModulesDir,
-        "build",
-        "Release",
-        "better_sqlite3.node"
-      );
-      fs.writeFileSync(
-        sqliteNodePath,
-        Buffer.from("fake better-sqlite3 binary")
-      );
+      const sqliteNodePath = path.join(nodeModulesDir, "build", "Release", "better_sqlite3.node");
+      fs.writeFileSync(sqliteNodePath, Buffer.from("fake better-sqlite3 binary"));
 
       // Create a JS file that requires it
       const jsFilePath = path.join(nodeModulesDir, "lib", "database.js");
@@ -112,7 +100,7 @@ describe("Prebuild Packages Support (Issue #18)", () => {
         {} as any,
         "./build/Release/addon.node",
         importerPath,
-        {}
+        {},
       );
 
       expect(result).toBeDefined();
@@ -145,7 +133,7 @@ describe("Prebuild Packages Support (Issue #18)", () => {
         sharpDir,
         "build",
         "Release",
-        `sharp-${platform}-${arch}.node`
+        `sharp-${platform}-${arch}.node`,
       );
       fs.writeFileSync(sharpNodePath, Buffer.from("fake sharp binary"));
 
@@ -185,12 +173,7 @@ describe("Prebuild Packages Support (Issue #18)", () => {
           recursive: true,
         });
 
-        const nodeFilePath = path.join(
-          pkgDir,
-          "build",
-          "Release",
-          `${pkg}.node`
-        );
+        const nodeFilePath = path.join(pkgDir, "build", "Release", `${pkg}.node`);
         fs.writeFileSync(nodeFilePath, Buffer.from(`${pkg} binary`));
       }
 
@@ -230,21 +213,12 @@ describe("Prebuild Packages Support (Issue #18)", () => {
       fs.mkdirSync(electronDir, { recursive: true });
 
       // Create a native module in node_modules
-      const nativeModuleDir = path.join(
-        electronDir,
-        "node_modules",
-        "native-addon"
-      );
+      const nativeModuleDir = path.join(electronDir, "node_modules", "native-addon");
       fs.mkdirSync(path.join(nativeModuleDir, "build", "Release"), {
         recursive: true,
       });
 
-      const addonPath = path.join(
-        nativeModuleDir,
-        "build",
-        "Release",
-        "addon.node"
-      );
+      const addonPath = path.join(nativeModuleDir, "build", "Release", "addon.node");
       fs.writeFileSync(addonPath, Buffer.from("electron native addon"));
 
       // Main process file
@@ -297,15 +271,7 @@ describe("Prebuild Packages Support (Issue #18)", () => {
         mode: "production",
       });
 
-      const deepPath = path.join(
-        tempDir,
-        "a",
-        "b",
-        "c",
-        "d",
-        "e",
-        "addon.node"
-      );
+      const deepPath = path.join(tempDir, "a", "b", "c", "d", "e", "addon.node");
       fs.mkdirSync(path.dirname(deepPath), { recursive: true });
       fs.writeFileSync(deepPath, Buffer.from("deep addon"));
 
@@ -315,7 +281,7 @@ describe("Prebuild Packages Support (Issue #18)", () => {
         {} as any,
         "./a/b/c/d/e/addon.node",
         importerPath,
-        {}
+        {},
       );
 
       expect(result).toBeDefined();
@@ -342,18 +308,8 @@ describe("Prebuild Packages Support (Issue #18)", () => {
       fs.mkdirSync(path.dirname(file2), { recursive: true });
 
       // Resolve from two different locations
-      const result1 = await (plugin.resolveId as any).call(
-        {} as any,
-        "./shared.node",
-        file1,
-        {}
-      );
-      const result2 = await (plugin.resolveId as any).call(
-        {} as any,
-        "../shared.node",
-        file2,
-        {}
-      );
+      const result1 = await (plugin.resolveId as any).call({} as any, "./shared.node", file1, {});
+      const result2 = await (plugin.resolveId as any).call({} as any, "../shared.node", file2, {});
 
       // Both should resolve to the same virtual module (same absolute path)
       expect(result1).toBe(result2);
@@ -409,12 +365,7 @@ describe("Prebuild Packages Support (Issue #18)", () => {
       const importerPath = path.join(tempDir, "index.js");
 
       // Resolve the module
-      await (plugin.resolveId as any).call(
-        mockContext,
-        "./addon.node",
-        importerPath,
-        {}
-      );
+      await (plugin.resolveId as any).call(mockContext, "./addon.node", importerPath, {});
 
       // Generate bundle (emit files)
       const hashedFilename = `addon-${crypto
@@ -431,7 +382,7 @@ describe("Prebuild Packages Support (Issue #18)", () => {
             type: "chunk",
             code: `require("./${hashedFilename}")`,
           },
-        }
+        },
       );
 
       // Verify file was emitted directly without any bundling

@@ -11,7 +11,7 @@ const parse = (code: string) => acornParse(code, { ecmaVersion: "latest" });
 
 /**
  * Comprehensive tests for ES module vs CommonJS detection
- * 
+ *
  * These tests verify that the load hook generates the correct module format
  * code for bindings, node-gyp-build, and regular .node imports in both
  * ES module and CommonJS contexts.
@@ -52,11 +52,7 @@ export { addon };`;
       const moduleAwareParse = (code: string) =>
         acornParse(code, { ecmaVersion: "latest", sourceType: "module" });
       const context = { parse: moduleAwareParse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        esmFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, esmFilePath);
 
       // Transform might return null if plugin is disabled or code doesn't match
       if (!transformResult) {
@@ -69,7 +65,9 @@ export { addon };`;
 
       // Extract the hashed filename from the transformed code
       // Try multiple patterns to match the transformed code
-      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
+      let match = transformResult.code.match(
+        /createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/,
+      );
       if (!match) {
         match = transformResult.code.match(/require\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       }
@@ -81,7 +79,7 @@ export { addon };`;
         {} as any,
         `./${hashedFilename}`,
         esmFilePath,
-        {}
+        {},
       );
 
       expect(resolveResult).toBeDefined();
@@ -92,13 +90,13 @@ export { addon };`;
       // Check load hook output
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
-      
+
       // Should generate ES module syntax
       expect(loadResult).toContain("import { createRequire }");
       expect(loadResult).toContain("export default");
       expect(loadResult).toContain("__require");
       expect(loadResult).toContain("import.meta.url");
-      
+
       // Should NOT contain CommonJS syntax
       expect(loadResult).not.toContain("module.exports");
       expect(loadResult).not.toMatch(/module\.exports\s*=/);
@@ -116,10 +114,7 @@ export { addon };`;
       fs.writeFileSync(path.join(buildDir, "addon.node"), "fake binary");
 
       // Create package.json with "type": "module" to ensure ES module detection
-      fs.writeFileSync(
-        path.join(tempDir, "package.json"),
-        JSON.stringify({ type: "module" })
-      );
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ type: "module" }));
 
       const esmFilePath = path.join(tempDir, "index.js");
       const code = `import { createRequire } from 'module';
@@ -131,11 +126,7 @@ export { addon };`;
       const moduleAwareParse = (code: string) =>
         acornParse(code, { ecmaVersion: "latest", sourceType: "module" });
       const context = { parse: moduleAwareParse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        esmFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, esmFilePath);
 
       // Transform might return null if plugin is disabled or code doesn't match
       if (!transformResult) {
@@ -146,7 +137,9 @@ export { addon };`;
       expect(transformResult.code).toBeDefined();
 
       // Try multiple patterns to match the transformed code
-      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
+      let match = transformResult.code.match(
+        /createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/,
+      );
       if (!match) {
         match = transformResult.code.match(/require\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       }
@@ -157,7 +150,7 @@ export { addon };`;
         {} as any,
         `./${hashedFilename}`,
         esmFilePath,
-        {}
+        {},
       );
 
       // resolveId now returns an object with { id, syntheticNamedExports }
@@ -191,11 +184,7 @@ const addon = bindings('addon');
 module.exports = { addon };`;
 
       const context = { parse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        cjsFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, cjsFilePath);
 
       // Transform might return null if plugin is disabled or code doesn't match
       if (!transformResult) {
@@ -206,7 +195,9 @@ module.exports = { addon };`;
       expect(transformResult.code).toBeDefined();
 
       // Try multiple patterns to match the transformed code
-      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
+      let match = transformResult.code.match(
+        /createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/,
+      );
       if (!match) {
         match = transformResult.code.match(/require\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       }
@@ -217,7 +208,7 @@ module.exports = { addon };`;
         {} as any,
         `./${hashedFilename}`,
         cjsFilePath,
-        {}
+        {},
       );
 
       // resolveId now returns the virtual ID string
@@ -243,11 +234,7 @@ module.exports = { addon };`;
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "binding.node"), "fake binary");
 
@@ -262,11 +249,7 @@ const binding = nodeGypBuild(__dirname);`;
       const moduleAwareParse = (code: string) =>
         acornParse(code, { ecmaVersion: "latest", sourceType: "module" });
       const context = { parse: moduleAwareParse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        esmFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, esmFilePath);
 
       // Transform might return null if plugin is disabled or code doesn't match
       if (!transformResult) {
@@ -278,7 +261,9 @@ const binding = nodeGypBuild(__dirname);`;
       expect(transformResult.code).toContain(".node");
 
       // Try to match either createRequire pattern or direct require pattern
-      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
+      let match = transformResult.code.match(
+        /createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/,
+      );
       if (!match) {
         match = transformResult.code.match(/require\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       }
@@ -289,7 +274,7 @@ const binding = nodeGypBuild(__dirname);`;
         {} as any,
         `./${hashedFilename}`,
         esmFilePath,
-        {}
+        {},
       );
 
       // resolveId now returns an object with { id, syntheticNamedExports }
@@ -311,21 +296,14 @@ const binding = nodeGypBuild(__dirname);`;
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "binding.node"), "fake binary");
 
       const esmFilePath = path.join(tempDir, "index.js");
       // Create package.json with "type": "module" to ensure ES module detection
-      fs.writeFileSync(
-        path.join(tempDir, "package.json"),
-        JSON.stringify({ type: "module" })
-      );
-      
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ type: "module" }));
+
       const code = `import nodeGypBuild from 'node-gyp-build';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -336,11 +314,7 @@ const binding = nodeGypBuild(__dirname);`;
       const moduleAwareParse = (code: string) =>
         acornParse(code, { ecmaVersion: "latest", sourceType: "module" });
       const context = { parse: moduleAwareParse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        esmFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, esmFilePath);
 
       // Transform might return null if plugin is disabled or code doesn't match
       if (!transformResult) {
@@ -351,7 +325,9 @@ const binding = nodeGypBuild(__dirname);`;
       expect(transformResult.code).toBeDefined();
 
       // Try to match either createRequire pattern or direct require pattern
-      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
+      let match = transformResult.code.match(
+        /createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/,
+      );
       if (!match) {
         match = transformResult.code.match(/require\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       }
@@ -362,7 +338,7 @@ const binding = nodeGypBuild(__dirname);`;
         {} as any,
         `./${hashedFilename}`,
         esmFilePath,
-        {}
+        {},
       );
 
       // resolveId now returns an object with { id, syntheticNamedExports }
@@ -386,11 +362,7 @@ const binding = nodeGypBuild(__dirname);`;
         mode: "production",
       });
 
-      const prebuildsDir = path.join(
-        tempDir,
-        "prebuilds",
-        `${process.platform}-${process.arch}`
-      );
+      const prebuildsDir = path.join(tempDir, "prebuilds", `${process.platform}-${process.arch}`);
       fs.mkdirSync(prebuildsDir, { recursive: true });
       fs.writeFileSync(path.join(prebuildsDir, "binding.node"), "fake binary");
 
@@ -399,11 +371,7 @@ const binding = nodeGypBuild(__dirname);`;
 const binding = nodeGypBuild(__dirname);`;
 
       const context = { parse };
-      const transformResult = (plugin.transform as any).call(
-        context,
-        code,
-        cjsFilePath
-      );
+      const transformResult = (plugin.transform as any).call(context, code, cjsFilePath);
 
       // Transform might return null if plugin is disabled or code doesn't match
       if (!transformResult) {
@@ -415,7 +383,9 @@ const binding = nodeGypBuild(__dirname);`;
       expect(transformResult.code).toContain(".node");
 
       // Try multiple patterns to match the transformed code
-      let match = transformResult.code.match(/createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
+      let match = transformResult.code.match(
+        /createRequire\(import\.meta\.url\)\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/,
+      );
       if (!match) {
         match = transformResult.code.match(/require\(['"]([^'"]+\.node(?:\?[^'"]+)?)['"]\)/);
       }
@@ -426,7 +396,7 @@ const binding = nodeGypBuild(__dirname);`;
         {} as any,
         `./${hashedFilename}`,
         cjsFilePath,
-        {}
+        {},
       );
 
       // resolveId now returns the virtual ID string
@@ -459,7 +429,7 @@ const binding = nodeGypBuild(__dirname);`;
         {} as any,
         "./addon.node",
         esmFilePath,
-        {}
+        {},
       );
 
       expect(virtualId).toBeDefined();
@@ -467,7 +437,7 @@ const binding = nodeGypBuild(__dirname);`;
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
-      
+
       // Should generate ES module syntax
       expect(loadResult).toContain("import { createRequire }");
       expect(loadResult).toContain("export default");
@@ -486,10 +456,7 @@ const binding = nodeGypBuild(__dirname);`;
       fs.writeFileSync(nodeFilePath, Buffer.from("fake binary"));
 
       // Create package.json FIRST, before resolving
-      fs.writeFileSync(
-        path.join(tempDir, "package.json"),
-        JSON.stringify({ type: "module" })
-      );
+      fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ type: "module" }));
 
       const esmFilePath = path.join(tempDir, "index.js");
 
@@ -497,12 +464,12 @@ const binding = nodeGypBuild(__dirname);`;
         {} as any,
         "./addon.node",
         esmFilePath,
-        {}
+        {},
       );
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
       expect(loadResult).toBeDefined();
-      
+
       // Should generate ES module syntax (detected from package.json type: module)
       expect(loadResult).toContain("import { createRequire }");
       expect(loadResult).toContain("export default");
@@ -528,7 +495,7 @@ const binding = nodeGypBuild(__dirname);`;
         {} as any,
         "./addon.node",
         cjsFilePath,
-        {}
+        {},
       );
 
       expect(virtualId).toBeDefined();
@@ -569,7 +536,7 @@ const binding = nodeGypBuild(__dirname);`;
         {} as any,
         "./addon.node",
         cjsFilePath,
-        {}
+        {},
       );
 
       expect(virtualId).toBeDefined();
@@ -604,7 +571,7 @@ const binding = nodeGypBuild(__dirname);`;
         {} as any,
         "./addon.node",
         cjsFilePath,
-        {}
+        {},
       );
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
@@ -639,7 +606,7 @@ const binding = nodeGypBuild(__dirname);`;
         {} as any,
         "./addon.node",
         esmFilePath,
-        {}
+        {},
       );
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);
@@ -668,7 +635,7 @@ const binding = nodeGypBuild(__dirname);`;
         {} as any,
         "./addon.node",
         esmFilePath,
-        {}
+        {},
       );
 
       const loadResult = await (plugin.load as any).call({} as any, virtualId);

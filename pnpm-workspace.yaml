@@ -1,0 +1,4 @@
+onlyBuiltDependencies:
+  - esbuild
+catalog:
+  vite-plus: 0.2.8

@@ -107,9 +107,7 @@ function isMemberExpression(node: BaseASTNode): node is MemberExpressionNode {
   return node.type === "MemberExpression";
 }
 
-function isVariableDeclarator(
-  node: BaseASTNode
-): node is VariableDeclaratorNode {
+function isVariableDeclarator(node: BaseASTNode): node is VariableDeclaratorNode {
   return node.type === "VariableDeclarator";
 }
 
@@ -117,9 +115,7 @@ function isImportDeclaration(node: BaseASTNode): node is ImportDeclarationNode {
   return node.type === "ImportDeclaration";
 }
 
-function isImportDefaultSpecifier(
-  node: BaseASTNode
-): node is ImportDefaultSpecifierNode {
+function isImportDefaultSpecifier(node: BaseASTNode): node is ImportDefaultSpecifierNode {
   return node.type === "ImportDefaultSpecifier";
 }
 
@@ -127,9 +123,7 @@ function isImportSpecifier(node: BaseASTNode): node is ImportSpecifierNode {
   return node.type === "ImportSpecifier";
 }
 
-export default function nativeFilePlugin(
-  options: NativeFilePluginOptions = {}
-): Plugin {
+export default function nativeFilePlugin(options: NativeFilePluginOptions = {}): Plugin {
   const name = "plugin-native-modules";
   const nativeRequireSuffix = "?native-require";
   const nativeRequireQuery = "?native-require=";
@@ -148,10 +142,7 @@ export default function nativeFilePlugin(
   let root = process.cwd();
   let defaultOutDir = "dist";
 
-  function resolveOutputDirectory(outputOptions: {
-    dir?: string;
-    file?: string;
-  }): string {
+  function resolveOutputDirectory(outputOptions: { dir?: string; file?: string }): string {
     if (outputOptions.dir) {
       return path.resolve(root, outputOptions.dir);
     }
@@ -161,14 +152,9 @@ export default function nativeFilePlugin(
     return path.resolve(root, defaultOutDir);
   }
 
-  function outputFileMatches(
-    outputDirectory: string,
-    info: NativeFileInfo
-  ): boolean {
+  function outputFileMatches(outputDirectory: string, info: NativeFileInfo): boolean {
     try {
-      return fs
-        .readFileSync(path.join(outputDirectory, info.hashedFilename))
-        .equals(info.content);
+      return fs.readFileSync(path.join(outputDirectory, info.hashedFilename)).equals(info.content);
     } catch {
       return false;
     }
@@ -187,10 +173,7 @@ export default function nativeFilePlugin(
   }
 
   function nativeRequireToken(nativeFilePath: string): string {
-    const token = crypto
-      .createHash("sha256")
-      .update(nativeFilePath)
-      .digest("hex");
+    const token = crypto.createHash("sha256").update(nativeFilePath).digest("hex");
     nativeRequirePaths.set(token, nativeFilePath);
     return token;
   }
@@ -208,11 +191,7 @@ export default function nativeFilePlugin(
     // If we have code, check for import/export statements
     if (code) {
       // Quick check for ES module indicators
-      if (
-        code.includes("import ") ||
-        code.includes("export ") ||
-        code.includes("import.meta")
-      ) {
+      if (code.includes("import ") || code.includes("export ") || code.includes("import.meta")) {
         return true;
       }
       // CommonJS indicators
@@ -235,9 +214,7 @@ export default function nativeFilePlugin(
         const packageJsonPath = path.join(dir, "package.json");
         if (fs.existsSync(packageJsonPath)) {
           try {
-            const packageJson = JSON.parse(
-              fs.readFileSync(packageJsonPath, "utf-8")
-            );
+            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
             if (packageJson.type === "module") {
               return true;
             }
@@ -295,11 +272,7 @@ export default function nativeFilePlugin(
     const arch = process.arch;
 
     // Try prebuilds directory first
-    const prebuildsDir = path.join(
-      directory,
-      "prebuilds",
-      `${platform}-${arch}`
-    );
+    const prebuildsDir = path.join(directory, "prebuilds", `${platform}-${arch}`);
 
     if (fs.existsSync(prebuildsDir)) {
       try {
@@ -372,14 +345,9 @@ export default function nativeFilePlugin(
 
   // Helper function to resolve bindings-style native module loading
   // Mimics bindings package behavior: searches common build directories
-  function resolveBindings(
-    directory: string,
-    moduleName: string
-  ): string | null {
+  function resolveBindings(directory: string, moduleName: string): string | null {
     // Ensure moduleName has .node extension
-    const nodeFileName = moduleName.endsWith(".node")
-      ? moduleName
-      : `${moduleName}.node`;
+    const nodeFileName = moduleName.endsWith(".node") ? moduleName : `${moduleName}.node`;
 
     // Find the package root (where build/ directory typically lives)
     const packageRoot = findPackageRoot(directory);
@@ -408,10 +376,7 @@ export default function nativeFilePlugin(
 
   // Helper function to resolve an npm package and find a .node file
   // Returns the path to the .node file if found, null otherwise
-  function resolveNpmPackageNodeFile(
-    packageName: string,
-    fromDir: string
-  ): string | null {
+  function resolveNpmPackageNodeFile(packageName: string, fromDir: string): string | null {
     // Walk up directories looking for node_modules
     let currentDir = fromDir;
     const root = path.parse(fromDir).root;
@@ -429,9 +394,7 @@ export default function nativeFilePlugin(
 
           if (fs.existsSync(packageJsonPath)) {
             try {
-              const packageJson = JSON.parse(
-                fs.readFileSync(packageJsonPath, "utf-8")
-              );
+              const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
 
               // Check if main points to a .node file
               if (packageJson.main && packageJson.main.endsWith(".node")) {
@@ -475,7 +438,7 @@ export default function nativeFilePlugin(
   // Returns the path to the .node file for the current platform, or null
   function findPlatformSpecificNativePackage(
     scopePrefix: string, // e.g., "@libsql/" or "@scope/prefix-"
-    fromDir: string
+    fromDir: string,
   ): { packageName: string; nodeFilePath: string } | null {
     // Common platform/arch combinations for native modules
     const platform = process.platform;
@@ -520,15 +483,9 @@ export default function nativeFilePlugin(
                 const lowerPlatform = platform.toLowerCase();
                 const lowerArch = arch.toLowerCase();
 
-                if (
-                  lowerPkg.includes(lowerPlatform) &&
-                  lowerPkg.includes(lowerArch)
-                ) {
+                if (lowerPkg.includes(lowerPlatform) && lowerPkg.includes(lowerArch)) {
                   const packageName = `${scopeName}/${pkg}`;
-                  const result = resolveNpmPackageNodeFile(
-                    packageName,
-                    currentDir
-                  );
+                  const result = resolveNpmPackageNodeFile(packageName, currentDir);
                   if (result) {
                     return { packageName, nodeFilePath: result };
                   }
@@ -551,9 +508,7 @@ export default function nativeFilePlugin(
   // For paths like /node_modules/@libsql/darwin-arm64/index.node -> libsql-darwin-arm64
   // For paths like /node_modules/sql/native.node -> sql
   function extractPackageName(filePath: string): string | null {
-    const nodeModulesMatch = filePath.match(
-      /node_modules[/\\](@[^/\\]+[/\\][^/\\]+|[^/\\]+)/
-    );
+    const nodeModulesMatch = filePath.match(/node_modules[/\\](@[^/\\]+[/\\][^/\\]+|[^/\\]+)/);
     if (nodeModulesMatch) {
       // Convert to file-safe format: @scope/package -> scope-package (remove @ and replace slashes)
       return nodeModulesMatch[1].replace(/^@/, "").replace(/[/\\]/g, "-");
@@ -566,13 +521,11 @@ export default function nativeFilePlugin(
   function generateHashedFilename(
     originalFilename: string,
     hash: string,
-    originalPath?: string
+    originalPath?: string,
   ): string {
     const lastDotIndex = originalFilename.lastIndexOf(".");
-    const extension =
-      lastDotIndex > 0 ? originalFilename.slice(lastDotIndex) : "";
-    const baseName =
-      lastDotIndex > 0 ? originalFilename.slice(0, lastDotIndex) : originalFilename;
+    const extension = lastDotIndex > 0 ? originalFilename.slice(lastDotIndex) : "";
+    const baseName = lastDotIndex > 0 ? originalFilename.slice(0, lastDotIndex) : originalFilename;
 
     if (options.filenameFormat === "hash-only") {
       // Hash-only format: HASH.node
@@ -597,11 +550,7 @@ export default function nativeFilePlugin(
     let info = nativeFiles.get(absolutePath);
     if (!info) {
       const content = fs.readFileSync(absolutePath);
-      const hash = crypto
-        .createHash("md5")
-        .update(content)
-        .digest("hex")
-        .slice(0, 8);
+      const hash = crypto.createHash("md5").update(content).digest("hex").slice(0, 8);
       const filename = path.basename(absolutePath);
       const hashedFilename = generateHashedFilename(filename, hash, absolutePath);
       info = {
@@ -621,7 +570,7 @@ export default function nativeFilePlugin(
   function detectModuleTypeWithContext(
     context: { getModuleInfo?: (id: string) => unknown },
     fileId: string,
-    code?: string
+    code?: string,
   ): boolean {
     try {
       if (typeof context.getModuleInfo === "function") {
@@ -648,8 +597,7 @@ export default function nativeFilePlugin(
       command = config.command;
       root = path.resolve(config.root ?? process.cwd());
       defaultOutDir = config.build?.outDir ?? "dist";
-      requireReturnsDefault =
-        config.build?.commonjsOptions?.requireReturnsDefault;
+      requireReturnsDefault = config.build?.commonjsOptions?.requireReturnsDefault;
 
       // Detect the wrapper format from Vite config.
       // Priority: rollupOptions.output.format > lib.formats > default (es).
@@ -657,14 +605,9 @@ export default function nativeFilePlugin(
       // so mixed-format builds must use the ESM wrapper. Rollup can lower that
       // wrapper to CommonJS while keeping createRequire() for ESM output.
       const rollupOutput = config.build?.rollupOptions?.output;
-      const configuredOutputs = Array.isArray(rollupOutput)
-        ? rollupOutput
-        : [rollupOutput];
+      const configuredOutputs = Array.isArray(rollupOutput) ? rollupOutput : [rollupOutput];
       const allOutputsAreInsideRoot = configuredOutputs.every((output) => {
-        const outputDirectory = path.resolve(
-          root,
-          output?.dir ?? defaultOutDir
-        );
+        const outputDirectory = path.resolve(root, output?.dir ?? defaultOutDir);
         const relativeOutputDirectory = path.relative(root, outputDirectory);
 
         return (
@@ -676,17 +619,14 @@ export default function nativeFilePlugin(
       });
 
       // Vite defaults emptyOutDir to true only when every output is inside root.
-      shouldEmptyOutDir =
-        config.build?.emptyOutDir ?? allOutputsAreInsideRoot;
+      shouldEmptyOutDir = config.build?.emptyOutDir ?? allOutputsAreInsideRoot;
 
       if (rollupOutput) {
         // rollupOptions.output can be an object or array of objects
         const formats = Array.isArray(rollupOutput)
           ? rollupOutput.map((output) => output?.format)
           : [rollupOutput.format];
-        outputFormat = formats.every(
-          (format) => format === "cjs" || format === "commonjs"
-        )
+        outputFormat = formats.every((format) => format === "cjs" || format === "commonjs")
           ? "cjs"
           : "es";
       } else if (config.build?.lib) {
@@ -695,9 +635,7 @@ export default function nativeFilePlugin(
         const lib = config.build.lib;
         if (typeof lib === "object" && lib.formats) {
           const formats = lib.formats;
-          outputFormat = formats.every((format) => format === "cjs")
-            ? "cjs"
-            : "es";
+          outputFormat = formats.every((format) => format === "cjs") ? "cjs" : "es";
         }
       }
       // Otherwise keep default 'es' (Vite's default for modern builds)
@@ -710,17 +648,12 @@ export default function nativeFilePlugin(
         .filter((output) => output.type === "chunk")
         .map((chunk) => chunk.code)
         .join("\n");
-      const reuseWrittenAssets =
-        this.meta?.watchMode && isWrite && !shouldEmptyOutDir;
-      let pendingEmittedFiles =
-        pendingEmittedFilesByOutput.get(outputDirectory);
+      const reuseWrittenAssets = this.meta?.watchMode && isWrite && !shouldEmptyOutDir;
+      let pendingEmittedFiles = pendingEmittedFilesByOutput.get(outputDirectory);
 
       if (reuseWrittenAssets && !pendingEmittedFiles) {
         pendingEmittedFiles = new Set<string>();
-        pendingEmittedFilesByOutput.set(
-          outputDirectory,
-          pendingEmittedFiles
-        );
+        pendingEmittedFilesByOutput.set(outputDirectory, pendingEmittedFiles);
       }
 
       // Emit each .node file as an asset
@@ -734,7 +667,7 @@ export default function nativeFilePlugin(
         if (existingInfo) {
           if (!existingInfo.content.equals(info.content)) {
             throw new Error(
-              `Native files produced the same output name with different contents: ${info.hashedFilename}`
+              `Native files produced the same output name with different contents: ${info.hashedFilename}`,
             );
           }
           return;
@@ -772,7 +705,7 @@ export default function nativeFilePlugin(
       const isRequireWrapper = id.endsWith(nativeRequireSuffix);
       const originalPath = id.slice(
         "\0native:".length,
-        isRequireWrapper ? -nativeRequireSuffix.length : undefined
+        isRequireWrapper ? -nativeRequireSuffix.length : undefined,
       );
       const info = nativeFiles.get(originalPath);
 
@@ -825,21 +758,13 @@ export default nativeModule;
         const queryIndex = source.indexOf(nativeRequireQuery);
         const requireToken =
           queryIndex >= 0
-            ? source
-                .slice(queryIndex + nativeRequireQuery.length)
-                .split("&")[0]
+            ? source.slice(queryIndex + nativeRequireQuery.length).split("&")[0]
             : null;
-        const queriedPath = requireToken
-          ? nativeRequirePaths.get(requireToken)
-          : undefined;
+        const queriedPath = requireToken ? nativeRequirePaths.get(requireToken) : undefined;
         const queriedInfo = queriedPath ? nativeFiles.get(queriedPath) : null;
         const isRequireWrapper = queriedInfo?.hashedFilename === basename;
-        const originalPath = isRequireWrapper
-          ? queriedPath!
-          : hashedFilenameToPath.get(basename)!;
-        const virtualId = `\0native:${originalPath}${
-          isRequireWrapper ? nativeRequireSuffix : ""
-        }`;
+        const originalPath = isRequireWrapper ? queriedPath! : hashedFilenameToPath.get(basename)!;
+        const virtualId = `\0native:${originalPath}${isRequireWrapper ? nativeRequireSuffix : ""}`;
 
         // Use syntheticNamedExports to enable named import/destructuring patterns
         // like `const { databaseOpen } = require('native-module')` or `import { foo } from 'native'`.
@@ -888,8 +813,7 @@ export default nativeModule;
       // Check for template literal requires that might be platform-specific native packages
       // These patterns are used by NAPI-RS/neon-rs for platform-specific native modules
       // e.g., require(`@libsql/${target}`) or require(`@scope/${platform}`)
-      const hasTemplateLiteralNativePackage =
-        /require\s*\(\s*`@[a-z0-9-]+\//.test(code);
+      const hasTemplateLiteralNativePackage = /require\s*\(\s*`@[a-z0-9-]+\//.test(code);
 
       if (
         !code.includes(".node") &&
@@ -900,8 +824,7 @@ export default nativeModule;
         return null;
 
       let modified = false;
-      const replacements: Array<{ start: number; end: number; value: string }> =
-        [];
+      const replacements: Array<{ start: number; end: number; value: string }> = [];
 
       try {
         // Parse the code using Rollup's built-in parser
@@ -960,10 +883,7 @@ export default nativeModule;
               (metaExpr.property as IdentifierNode).name === "url"
             ) {
               const metaProp = metaExpr.object as MetaPropertyNode;
-              if (
-                metaProp.meta.name === "import" &&
-                metaProp.property.name === "meta"
-              ) {
+              if (metaProp.meta.name === "import" && metaProp.property.name === "meta") {
                 return true;
               }
             }
@@ -972,17 +892,11 @@ export default nativeModule;
             if (
               isMemberExpression(metaExpr.object) &&
               isIdentifier((metaExpr.object as MemberExpressionNode).object) &&
-              (
-                (metaExpr.object as MemberExpressionNode)
-                  .object as IdentifierNode
-              ).name === "import" &&
-              isIdentifier(
-                (metaExpr.object as MemberExpressionNode).property
-              ) &&
-              (
-                (metaExpr.object as MemberExpressionNode)
-                  .property as IdentifierNode
-              ).name === "meta" &&
+              ((metaExpr.object as MemberExpressionNode).object as IdentifierNode).name ===
+                "import" &&
+              isIdentifier((metaExpr.object as MemberExpressionNode).property) &&
+              ((metaExpr.object as MemberExpressionNode).property as IdentifierNode).name ===
+                "meta" &&
               isIdentifier(metaExpr.property) &&
               (metaExpr.property as IdentifierNode).name === "url"
             ) {
@@ -996,7 +910,7 @@ export default nativeModule;
         // Helper to resolve directory from a CallExpression (path.dirname, path.resolve, etc.)
         function resolveDirectoryFromCall(
           callNode: CallExpressionNode,
-          currentFileId: string
+          currentFileId: string,
         ): string | null {
           const callee = callNode.callee;
 
@@ -1005,8 +919,7 @@ export default nativeModule;
             const memberExpr = callee as MemberExpressionNode;
             if (
               isIdentifier(memberExpr.object) &&
-              (pathModuleVars.has(memberExpr.object.name) ||
-                memberExpr.object.name === "path") &&
+              (pathModuleVars.has(memberExpr.object.name) || memberExpr.object.name === "path") &&
               isIdentifier(memberExpr.property)
             ) {
               const methodName = memberExpr.property.name;
@@ -1047,10 +960,7 @@ export default nativeModule;
                     // Unknown variable
                     return null;
                   }
-                } else if (
-                  isLiteral(firstArg) &&
-                  typeof firstArg.value === "string"
-                ) {
+                } else if (isLiteral(firstArg) && typeof firstArg.value === "string") {
                   // Absolute or relative path
                   baseDir = path.dirname(currentFileId);
                   startIndex = 0;
@@ -1123,10 +1033,7 @@ export default nativeModule;
             // Track path module imports
             if (source === "path" || source === "node:path") {
               for (const specifier of node.specifiers) {
-                if (
-                  isImportDefaultSpecifier(specifier) &&
-                  isIdentifier(specifier.local)
-                ) {
+                if (isImportDefaultSpecifier(specifier) && isIdentifier(specifier.local)) {
                   pathModuleVars.add(specifier.local.name);
                 }
               }
@@ -1152,10 +1059,7 @@ export default nativeModule;
               // Track the import statement node for potential removal
               nodeGypBuildImportNodes.push(node);
               for (const specifier of node.specifiers) {
-                if (
-                  isImportDefaultSpecifier(specifier) &&
-                  isIdentifier(specifier.local)
-                ) {
+                if (isImportDefaultSpecifier(specifier) && isIdentifier(specifier.local)) {
                   nodeGypBuildVars.add(specifier.local.name);
                 }
               }
@@ -1166,10 +1070,7 @@ export default nativeModule;
               // Track the import statement node for potential removal
               bindingsImportNodes.push(node);
               for (const specifier of node.specifiers) {
-                if (
-                  isImportDefaultSpecifier(specifier) &&
-                  isIdentifier(specifier.local)
-                ) {
+                if (isImportDefaultSpecifier(specifier) && isIdentifier(specifier.local)) {
                   bindingsVars.add(specifier.local.name);
                 }
               }
@@ -1187,10 +1088,7 @@ export default nativeModule;
                 directoryVars.set(varName, path.dirname(id));
               }
               // Pattern 2: var t = otherDirVar (copy directory from another variable)
-              else if (
-                isIdentifier(node.init) &&
-                directoryVars.has(node.init.name)
-              ) {
+              else if (isIdentifier(node.init) && directoryVars.has(node.init.name)) {
                 directoryVars.set(varName, directoryVars.get(node.init.name)!);
               }
               // Pattern 3: var t = path.dirname(fileURLToPath(import.meta.url)) or path.resolve/join
@@ -1214,8 +1112,7 @@ export default nativeModule;
                 // Check if it's require('node-gyp-build') or customRequire('node-gyp-build')
                 else if (
                   isIdentifier(calleeNode) &&
-                  (calleeNode.name === "require" ||
-                    customRequireVars.has(calleeNode.name)) &&
+                  (calleeNode.name === "require" || customRequireVars.has(calleeNode.name)) &&
                   node.init.arguments.length === 1 &&
                   isLiteral(node.init.arguments[0]) &&
                   node.init.arguments[0].value === "node-gyp-build"
@@ -1227,8 +1124,7 @@ export default nativeModule;
                 // Check if it's require('bindings') or customRequire('bindings')
                 else if (
                   isIdentifier(calleeNode) &&
-                  (calleeNode.name === "require" ||
-                    customRequireVars.has(calleeNode.name)) &&
+                  (calleeNode.name === "require" || customRequireVars.has(calleeNode.name)) &&
                   node.init.arguments.length === 1 &&
                   isLiteral(node.init.arguments[0]) &&
                   node.init.arguments[0].value === "bindings"
@@ -1266,10 +1162,7 @@ export default nativeModule;
               }
             }
             // Pattern 2: Variable call nodeGypBuildVar(__dirname)
-            else if (
-              isIdentifier(calleeNode) &&
-              nodeGypBuildVars.has(calleeNode.name)
-            ) {
+            else if (isIdentifier(calleeNode) && nodeGypBuildVars.has(calleeNode.name)) {
               const dirArg = node.arguments[0];
               const directory = resolveDirArgument(dirArg, id);
 
@@ -1310,7 +1203,7 @@ export default nativeModule;
                   (prop) =>
                     prop.type === "Property" &&
                     prop.key?.name === "bindings" &&
-                    isLiteral(prop.value)
+                    isLiteral(prop.value),
                 );
                 if (bindingsProp && isLiteral(bindingsProp.value)) {
                   moduleName = bindingsProp.value.value as string;
@@ -1350,7 +1243,7 @@ export default nativeModule;
                   (prop) =>
                     prop.type === "Property" &&
                     prop.key?.name === "bindings" &&
-                    isLiteral(prop.value)
+                    isLiteral(prop.value),
                 );
                 if (bindingsProp && isLiteral(bindingsProp.value)) {
                   moduleName = bindingsProp.value.value as string;
@@ -1401,11 +1294,9 @@ export default nativeModule;
             const isPathJoinCall =
               (isMemberExpression(calleeNode) &&
                 isIdentifier(calleeNode.object) &&
-                (pathModuleVars.has(calleeNode.object.name) ||
-                  calleeNode.object.name === "path") &&
+                (pathModuleVars.has(calleeNode.object.name) || calleeNode.object.name === "path") &&
                 isIdentifier(calleeNode.property) &&
-                (calleeNode.property.name === "join" ||
-                  calleeNode.property.name === "resolve")) ||
+                (calleeNode.property.name === "join" || calleeNode.property.name === "resolve")) ||
               (isIdentifier(calleeNode) && calleeNode.name === "join");
 
             if (isPathJoinCall && node.arguments.length >= 2) {
@@ -1415,10 +1306,7 @@ export default nativeModule;
 
               if (isIdentifier(firstArg) && firstArg.name === "__dirname") {
                 baseDir = path.dirname(id);
-              } else if (
-                isIdentifier(firstArg) &&
-                directoryVars.has(firstArg.name)
-              ) {
+              } else if (isIdentifier(firstArg) && directoryVars.has(firstArg.name)) {
                 baseDir = directoryVars.get(firstArg.name)!;
               }
 
@@ -1458,8 +1346,7 @@ export default nativeModule;
             // where the package's main entry is a .node file
             if (
               isIdentifier(calleeNode) &&
-              (calleeNode.name === "require" ||
-                customRequireVars.has(calleeNode.name)) &&
+              (calleeNode.name === "require" || customRequireVars.has(calleeNode.name)) &&
               node.arguments.length === 1 &&
               isLiteral(node.arguments[0]) &&
               typeof node.arguments[0].value === "string"
@@ -1474,10 +1361,7 @@ export default nativeModule;
                 !packageName.startsWith("node:")
               ) {
                 // Try to resolve the package and find a .node file
-                const nodeFilePath = resolveNpmPackageNodeFile(
-                  packageName,
-                  path.dirname(id)
-                );
+                const nodeFilePath = resolveNpmPackageNodeFile(packageName, path.dirname(id));
 
                 if (nodeFilePath) {
                   const info = registerNativeFile(nodeFilePath);
@@ -1497,8 +1381,7 @@ export default nativeModule;
             // where the package name is dynamically constructed but follows platform patterns
             if (
               isIdentifier(calleeNode) &&
-              (calleeNode.name === "require" ||
-                customRequireVars.has(calleeNode.name)) &&
+              (calleeNode.name === "require" || customRequireVars.has(calleeNode.name)) &&
               node.arguments.length === 1 &&
               node.arguments[0].type === "TemplateLiteral"
             ) {
@@ -1509,29 +1392,20 @@ export default nativeModule;
 
               // Check if this is a simple template like `@scope/${expr}`
               // We need at least one quasi (the prefix) and exactly one expression
-              if (
-                templateLiteral.quasis.length >= 1 &&
-                templateLiteral.expressions.length >= 1
-              ) {
+              if (templateLiteral.quasis.length >= 1 && templateLiteral.expressions.length >= 1) {
                 const prefix = templateLiteral.quasis[0].value.cooked;
 
                 // Check if the prefix looks like a scoped package pattern
                 // e.g., "@libsql/", "@scope/prefix-"
                 if (prefix && prefix.startsWith("@") && prefix.includes("/")) {
                   // Try to find a matching platform-specific package
-                  const result = findPlatformSpecificNativePackage(
-                    prefix,
-                    path.dirname(id)
-                  );
+                  const result = findPlatformSpecificNativePackage(prefix, path.dirname(id));
 
                   if (result) {
                     const { nodeFilePath } = result;
                     const info = registerNativeFile(nodeFilePath);
                     const templateNode = node.arguments[0];
-                    if (
-                      templateNode.start !== undefined &&
-                      templateNode.end !== undefined
-                    ) {
+                    if (templateNode.start !== undefined && templateNode.end !== undefined) {
                       replacements.push({
                         start: templateNode.start,
                         end: templateNode.end,
@@ -1566,7 +1440,7 @@ export default nativeModule;
         // Helper to resolve directory argument (__dirname, path.join, etc.)
         function resolveDirArgument(
           arg: BaseASTNode | undefined,
-          currentFileId: string
+          currentFileId: string,
         ): string | null {
           if (!arg) return null;
 
@@ -1607,8 +1481,7 @@ export default nativeModule;
             if (
               isMemberExpression(callee) &&
               isIdentifier(callee.object) &&
-              (pathModuleVars.has(callee.object.name) ||
-                callee.object.name === "path") &&
+              (pathModuleVars.has(callee.object.name) || callee.object.name === "path") &&
               isIdentifier(callee.property)
             ) {
               const methodName = callee.property.name;
@@ -1631,10 +1504,7 @@ export default nativeModule;
                     // Unknown variable
                     return null;
                   }
-                } else if (
-                  isLiteral(firstArg) &&
-                  typeof firstArg.value === "string"
-                ) {
+                } else if (isLiteral(firstArg) && typeof firstArg.value === "string") {
                   // Absolute or relative path
                   baseDir = path.dirname(currentFileId);
                   startIndex = 0;
@@ -1650,10 +1520,7 @@ export default nativeModule;
                   const pathArg = arg.arguments[i];
                   if (isLiteral(pathArg) && typeof pathArg.value === "string") {
                     parts.push(pathArg.value);
-                  } else if (
-                    isIdentifier(pathArg) &&
-                    directoryVars.has(pathArg.name)
-                  ) {
+                  } else if (isIdentifier(pathArg) && directoryVars.has(pathArg.name)) {
                     // Another directory variable
                     parts.push(directoryVars.get(pathArg.name)!);
                   } else {
@@ -1671,10 +1538,7 @@ export default nativeModule;
         }
 
         // Helper to process a found .node file and replace the call expression
-        function processNodeFile(
-          nodeFilePath: string,
-          callNode: CallExpressionNode
-        ): void {
+        function processNodeFile(nodeFilePath: string, callNode: CallExpressionNode): void {
           const info = registerNativeFile(nodeFilePath);
 
           // Determine how to generate the replacement code
@@ -1717,10 +1581,7 @@ export default nativeModule;
         if (nodeGypBuildUsageCount > 0 && nodeGypBuildImportNodes.length > 0) {
           // Remove the tracked import/require statements
           for (const importNode of nodeGypBuildImportNodes) {
-            if (
-              importNode.start !== undefined &&
-              importNode.end !== undefined
-            ) {
+            if (importNode.start !== undefined && importNode.end !== undefined) {
               // For ImportDeclaration, remove the entire statement including newline
               if (importNode.type === "ImportDeclaration") {
                 replacements.push({
@@ -1748,10 +1609,7 @@ export default nativeModule;
         if (bindingsUsageCount > 0 && bindingsImportNodes.length > 0) {
           // Remove the tracked import/require statements
           for (const importNode of bindingsImportNodes) {
-            if (
-              importNode.start !== undefined &&
-              importNode.end !== undefined
-            ) {
+            if (importNode.start !== undefined && importNode.end !== undefined) {
               // For ImportDeclaration, remove the entire statement
               if (importNode.type === "ImportDeclaration") {
                 replacements.push({
@@ -1783,8 +1641,7 @@ export default nativeModule;
 
           // Only inject createRequire infrastructure if we actually modified something (replaced node-gyp-build)
           if (isESModule && modified && !hasCreateRequireImport) {
-            createRequireInjection =
-              "import { createRequire } from 'module';\n";
+            createRequireInjection = "import { createRequire } from 'module';\n";
             // Set the local name since we're creating the import
             createRequireLocalName = "createRequire";
           }
@@ -1822,13 +1679,8 @@ export default nativeModule;
 
             if (lastImportMatch) {
               // Insert after the last import
-              const insertPos =
-                lastImportMatch.index + lastImportMatch[0].length;
-              newCode =
-                newCode.slice(0, insertPos) +
-                "\n" +
-                codePrefix +
-                newCode.slice(insertPos);
+              const insertPos = lastImportMatch.index + lastImportMatch[0].length;
+              newCode = newCode.slice(0, insertPos) + "\n" + codePrefix + newCode.slice(insertPos);
             } else {
               // No imports found, prepend to the file
               newCode = codePrefix + "\n" + newCode;
@@ -1839,10 +1691,7 @@ export default nativeModule;
         }
       } catch (error) {
         // If parsing fails, log and skip transformation
-        console.warn(
-          `Failed to parse ${id} for native module transformation:`,
-          error
-        );
+        console.warn(`Failed to parse ${id} for native module transformation:`, error);
         return null;
       }
 
