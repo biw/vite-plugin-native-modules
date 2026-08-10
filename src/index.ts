@@ -3,6 +3,15 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Plugin, RollupCommonJSOptions } from "vite";
 
+interface NativeSidecarFileInfo {
+  /** File content for emission */
+  content: Buffer;
+  /** Preserved filename required by the native dynamic linker */
+  filename: string;
+  /** Absolute path to the original runtime file */
+  originalPath: string;
+}
+
 interface NativeFileInfo {
   /** File content for emission */
   content: Buffer;
@@ -10,6 +19,8 @@ interface NativeFileInfo {
   hashedFilename: string;
   /** Absolute path to the original .node file */
   originalPath: string;
+  /** Runtime libraries that must remain next to the native addon */
+  sidecarFiles: NativeSidecarFileInfo[];
 }
 
 interface PackageConfig {
@@ -152,9 +163,9 @@ export default function nativeFilePlugin(options: NativeFilePluginOptions = {}):
     return path.resolve(root, defaultOutDir);
   }
 
-  function outputFileMatches(outputDirectory: string, info: NativeFileInfo): boolean {
+  function outputFileMatches(outputDirectory: string, fileName: string, content: Buffer): boolean {
     try {
-      return fs.readFileSync(path.join(outputDirectory, info.hashedFilename)).equals(info.content);
+      return fs.readFileSync(path.join(outputDirectory, fileName)).equals(content);
     } catch {
       return false;
     }
@@ -315,6 +326,44 @@ export default function nativeFilePlugin(options: NativeFilePluginOptions = {}):
     }
 
     return null;
+  }
+
+  // Resolve the platform layout emitted by swift-node 0.1.0. macOS binaries
+  // sit beside the generated loader, while Linux and Windows use a
+  // target-qualified subdirectory for the addon and runtime sidecars.
+  function resolveSwiftNodeAddon(
+    directory: string,
+    moduleName: string,
+  ): { nodeFilePath: string; sidecarPaths: string[] } | null {
+    const report = process.report?.getReport?.() as
+      | { header?: { glibcVersionRuntime?: string } }
+      | undefined;
+    const isMusl = process.platform === "linux" && !report?.header?.glibcVersionRuntime;
+    const target = `${process.platform}-${process.arch}${isMusl ? "-musl" : ""}`;
+    const binaryName = `${moduleName}.${target}.node`;
+    const binaryPath = path.join(
+      directory,
+      ...(process.platform === "darwin" ? [] : [target]),
+      binaryName,
+    );
+
+    if (!fs.existsSync(binaryPath)) return null;
+
+    // Linux and Windows resolve the Swift runtime beside the addon. Keep their
+    // original filenames because the native dynamic linker references them.
+    const sidecarPaths =
+      process.platform === "darwin"
+        ? []
+        : fs
+            .readdirSync(path.dirname(binaryPath))
+            .filter((filename) =>
+              process.platform === "win32"
+                ? filename.toLowerCase().endsWith(".dll")
+                : /\.so(?:\..+)?$/i.test(filename),
+            )
+            .map((filename) => path.join(path.dirname(binaryPath), filename));
+
+    return { nodeFilePath: binaryPath, sidecarPaths };
   }
 
   // Helper function to find package root by walking up directories
@@ -544,9 +593,30 @@ export default function nativeFilePlugin(options: NativeFilePluginOptions = {}):
     }
   }
 
+  function addNativeSidecarFiles(info: NativeFileInfo, sidecarPaths: string[]): void {
+    for (const sidecarPath of sidecarPaths) {
+      if (info.sidecarFiles.some((sidecar) => sidecar.originalPath === sidecarPath)) continue;
+
+      const sidecar: NativeSidecarFileInfo = {
+        content: fs.readFileSync(sidecarPath),
+        filename: path.basename(sidecarPath),
+        originalPath: sidecarPath,
+      };
+      const sameFilename = info.sidecarFiles.find(
+        (existing) => existing.filename === sidecar.filename,
+      );
+      if (sameFilename && !sameFilename.content.equals(sidecar.content)) {
+        throw new Error(
+          `Native runtime files produced the same output name with different contents: ${sidecar.filename}`,
+        );
+      }
+      if (!sameFilename) info.sidecarFiles.push(sidecar);
+    }
+  }
+
   // Helper to register a native file and return its info
   // Centralizes the hash generation, storage, and reverse mapping logic
-  function registerNativeFile(absolutePath: string): NativeFileInfo {
+  function registerNativeFile(absolutePath: string, sidecarPaths: string[] = []): NativeFileInfo {
     let info = nativeFiles.get(absolutePath);
     if (!info) {
       const content = fs.readFileSync(absolutePath);
@@ -557,11 +627,13 @@ export default function nativeFilePlugin(options: NativeFilePluginOptions = {}):
         content,
         hashedFilename,
         originalPath: absolutePath,
+        sidecarFiles: [],
       };
       nativeFiles.set(absolutePath, info);
       nativeRequireToken(absolutePath);
       hashedFilenameToPath.set(hashedFilename, absolutePath);
     }
+    addNativeSidecarFiles(info, sidecarPaths);
     return info;
   }
 
@@ -643,7 +715,7 @@ export default function nativeFilePlugin(options: NativeFilePluginOptions = {}):
 
     generateBundle(outputOptions, bundle, isWrite) {
       const outputDirectory = resolveOutputDirectory(outputOptions);
-      const nativeFilesByOutputName = new Map<string, NativeFileInfo>();
+      const nativeFilesByOutputName = new Map<string, Buffer>();
       const renderedBundleCode = Object.values(bundle)
         .filter((output) => output.type === "chunk")
         .map((chunk) => chunk.code)
@@ -663,38 +735,45 @@ export default function nativeFilePlugin(options: NativeFilePluginOptions = {}):
         // by a rendered chunk.
         if (!renderedBundleCode.includes(info.hashedFilename)) return;
 
-        const existingInfo = nativeFilesByOutputName.get(info.hashedFilename);
-        if (existingInfo) {
-          if (!existingInfo.content.equals(info.content)) {
-            throw new Error(
-              `Native files produced the same output name with different contents: ${info.hashedFilename}`,
-            );
+        const outputFiles = [
+          { content: info.content, fileName: info.hashedFilename },
+          ...info.sidecarFiles.map((sidecar) => ({
+            content: sidecar.content,
+            fileName: sidecar.filename,
+          })),
+        ];
+
+        for (const outputFile of outputFiles) {
+          const existingInfo = nativeFilesByOutputName.get(outputFile.fileName);
+          if (existingInfo) {
+            if (!existingInfo.equals(outputFile.content)) {
+              throw new Error(
+                `Native files produced the same output name with different contents: ${outputFile.fileName}`,
+              );
+            }
+            continue;
           }
-          return;
-        }
-        nativeFilesByOutputName.set(info.hashedFilename, info);
+          nativeFilesByOutputName.set(outputFile.fileName, outputFile.content);
 
-        // Only emit once in watch mode (and when emptyOutDir isn't deleting the files) because file
-        // writes may fail if the file is already in use by a running app, especially on Windows. Do
-        // this even if the file content did change, because as it stands, the NativeFileInfo anyway
-        // contains the previous file content (which is a separate issue, and less important because
-        // addons are typically prebuilt meaning unlikely to change).
-        if (
-          reuseWrittenAssets &&
-          (pendingEmittedFiles?.has(info.hashedFilename) ||
-            outputFileMatches(outputDirectory, info))
-        ) {
-          return;
-        }
+          // Only emit once in watch mode (and when emptyOutDir isn't deleting the files) because file
+          // writes may fail if the file is already in use by a running app, especially on Windows.
+          if (
+            reuseWrittenAssets &&
+            (pendingEmittedFiles?.has(outputFile.fileName) ||
+              outputFileMatches(outputDirectory, outputFile.fileName, outputFile.content))
+          ) {
+            continue;
+          }
 
-        this.emitFile({
-          fileName: info.hashedFilename,
-          source: info.content,
-          type: "asset",
-        });
+          this.emitFile({
+            fileName: outputFile.fileName,
+            source: outputFile.content,
+            type: "asset",
+          });
 
-        if (reuseWrittenAssets) {
-          pendingEmittedFiles!.add(info.hashedFilename);
+          if (reuseWrittenAssets) {
+            pendingEmittedFiles!.add(outputFile.fileName);
+          }
         }
       });
     },
@@ -851,8 +930,17 @@ export default nativeModule;
         // Track variables that hold directory paths
         const directoryVars = new Map<string, string>(); // varName -> resolved directory path
 
+        // Track variables that hold statically evaluable strings and native file paths.
+        // Swift-node loaders use these to construct target-qualified addon filenames.
+        const staticStringVars = new Map<string, string>();
+        const nativeFilePathVars = new Map<string, string>();
+        const swiftNodeAddonResolvers = new Set<string>();
+
         // Track module aliases for path and url modules
         const pathModuleVars = new Set<string>(); // Variables that reference 'path' module
+        const pathDirnameVars = new Set<string>(); // Named dirname imports from 'path'
+        const pathJoinVars = new Set<string>(); // Named join imports from 'path'
+        const pathResolveVars = new Set<string>(); // Named resolve imports from 'path'
         const fileURLToPathVars = new Set<string>(); // Variables that reference 'fileURLToPath'
 
         // Detect if this is an ES6 module (vs CommonJS)
@@ -909,6 +997,61 @@ export default nativeModule;
           return false;
         }
 
+        function resolveStaticString(node: BaseASTNode): string | null {
+          if (isLiteral(node) && typeof node.value === "string") {
+            return node.value;
+          }
+
+          if (isIdentifier(node)) {
+            return staticStringVars.get(node.name) ?? null;
+          }
+
+          if (isMemberExpression(node)) {
+            if (
+              isIdentifier(node.object) &&
+              node.object.name === "process" &&
+              isIdentifier(node.property)
+            ) {
+              if (node.property.name === "platform") return process.platform;
+              if (node.property.name === "arch") return process.arch;
+            }
+            return null;
+          }
+
+          if (node.type === "TemplateLiteral") {
+            const template = node as BaseASTNode & {
+              expressions: BaseASTNode[];
+              quasis: Array<{ value: { cooked: string | null } }>;
+            };
+            let value = template.quasis[0]?.value.cooked;
+            if (value === null || value === undefined) return null;
+
+            for (let index = 0; index < template.expressions.length; index++) {
+              const expressionValue = resolveStaticString(template.expressions[index]);
+              const suffix = template.quasis[index + 1]?.value.cooked;
+              if (expressionValue === null || suffix === null || suffix === undefined) return null;
+              value += expressionValue + suffix;
+            }
+
+            return value;
+          }
+
+          if (node.type === "BinaryExpression") {
+            const expression = node as BaseASTNode & {
+              left: BaseASTNode;
+              operator: string;
+              right: BaseASTNode;
+            };
+            if (expression.operator !== "+") return null;
+
+            const left = resolveStaticString(expression.left);
+            const right = resolveStaticString(expression.right);
+            return left === null || right === null ? null : left + right;
+          }
+
+          return null;
+        }
+
         // Helper to resolve directory from a CallExpression (path.dirname, path.resolve, etc.)
         function resolveDirectoryFromCall(
           callNode: CallExpressionNode,
@@ -916,80 +1059,87 @@ export default nativeModule;
         ): string | null {
           const callee = callNode.callee;
 
-          // Check for path.dirname() or pathAlias.dirname()
-          if (isMemberExpression(callee)) {
-            const memberExpr = callee as MemberExpressionNode;
-            if (
-              isIdentifier(memberExpr.object) &&
-              (pathModuleVars.has(memberExpr.object.name) || memberExpr.object.name === "path") &&
-              isIdentifier(memberExpr.property)
-            ) {
-              const methodName = memberExpr.property.name;
+          // Check for path.dirname(), pathAlias.dirname(), or named path imports.
+          let methodName: "dirname" | "join" | "resolve" | null = null;
+          if (
+            isMemberExpression(callee) &&
+            isIdentifier(callee.object) &&
+            (pathModuleVars.has(callee.object.name) || callee.object.name === "path") &&
+            isIdentifier(callee.property) &&
+            (callee.property.name === "dirname" ||
+              callee.property.name === "join" ||
+              callee.property.name === "resolve")
+          ) {
+            methodName = callee.property.name;
+          } else if (isIdentifier(callee)) {
+            if (pathDirnameVars.has(callee.name)) methodName = "dirname";
+            else if (pathJoinVars.has(callee.name) || callee.name === "join") methodName = "join";
+            else if (pathResolveVars.has(callee.name)) methodName = "resolve";
+          }
 
-              // path.dirname(fileURLToPath(import.meta.url))
-              if (methodName === "dirname") {
-                if (callNode.arguments.length === 1) {
-                  const arg = callNode.arguments[0];
-                  if (isFileURLToPathPattern(arg)) {
-                    // This is equivalent to __dirname
-                    return path.dirname(currentFileId);
-                  }
-                  // path.dirname(someVar) where someVar is a known directory
-                  if (isIdentifier(arg) && directoryVars.has(arg.name)) {
-                    const baseDir = directoryVars.get(arg.name)!;
-                    return path.dirname(baseDir);
-                  }
-                }
+          // path.dirname(fileURLToPath(import.meta.url))
+          if (methodName === "dirname") {
+            if (callNode.arguments.length === 1) {
+              const arg = callNode.arguments[0];
+              if (isFileURLToPathPattern(arg)) {
+                // This is equivalent to __dirname
+                return path.dirname(currentFileId);
               }
-
-              // path.resolve() or path.join()
-              if (methodName === "resolve" || methodName === "join") {
-                if (callNode.arguments.length === 0) return null;
-
-                // Determine the base directory from the first argument
-                let baseDir: string | null = null;
-                let startIndex = 0;
-
-                const firstArg = callNode.arguments[0];
-                if (isIdentifier(firstArg)) {
-                  if (firstArg.name === "__dirname") {
-                    baseDir = path.dirname(currentFileId);
-                    startIndex = 1;
-                  } else if (directoryVars.has(firstArg.name)) {
-                    baseDir = directoryVars.get(firstArg.name)!;
-                    startIndex = 1;
-                  } else {
-                    // Unknown variable
-                    return null;
-                  }
-                } else if (isLiteral(firstArg) && typeof firstArg.value === "string") {
-                  // Absolute or relative path
-                  baseDir = path.dirname(currentFileId);
-                  startIndex = 0;
-                } else {
-                  // Complex expression
-                  return null;
-                }
-
-                const parts: string[] = [baseDir];
-
-                // Process remaining arguments
-                for (let i = startIndex; i < callNode.arguments.length; i++) {
-                  const arg = callNode.arguments[i];
-                  if (isLiteral(arg) && typeof arg.value === "string") {
-                    parts.push(arg.value);
-                  } else if (isIdentifier(arg) && directoryVars.has(arg.name)) {
-                    // Another directory variable - use it
-                    parts.push(directoryVars.get(arg.name)!);
-                  } else {
-                    // Can't resolve
-                    return null;
-                  }
-                }
-
-                return path.join(...parts);
+              // path.dirname(someVar) where someVar is a known directory
+              if (isIdentifier(arg) && directoryVars.has(arg.name)) {
+                const baseDir = directoryVars.get(arg.name)!;
+                return path.dirname(baseDir);
               }
             }
+          }
+
+          // path.resolve() or path.join()
+          if (methodName === "resolve" || methodName === "join") {
+            if (callNode.arguments.length === 0) return null;
+
+            // Determine the base directory from the first argument
+            let baseDir: string | null = null;
+            let startIndex = 0;
+
+            const firstArg = callNode.arguments[0];
+            if (isIdentifier(firstArg)) {
+              if (firstArg.name === "__dirname") {
+                baseDir = path.dirname(currentFileId);
+                startIndex = 1;
+              } else if (directoryVars.has(firstArg.name)) {
+                baseDir = directoryVars.get(firstArg.name)!;
+                startIndex = 1;
+              } else {
+                // Unknown variable
+                return null;
+              }
+            } else if (resolveStaticString(firstArg) !== null) {
+              // Absolute or relative path
+              baseDir = path.dirname(currentFileId);
+              startIndex = 0;
+            } else {
+              // Complex expression
+              return null;
+            }
+
+            const parts: string[] = [baseDir];
+
+            // Process remaining arguments
+            for (let i = startIndex; i < callNode.arguments.length; i++) {
+              const arg = callNode.arguments[i];
+              const staticValue = resolveStaticString(arg);
+              if (staticValue !== null) {
+                parts.push(staticValue);
+              } else if (isIdentifier(arg) && directoryVars.has(arg.name)) {
+                // Another directory variable - use it
+                parts.push(directoryVars.get(arg.name)!);
+              } else {
+                // Can't resolve
+                return null;
+              }
+            }
+
+            return path.join(...parts);
           }
 
           return null;
@@ -1037,6 +1187,16 @@ export default nativeModule;
               for (const specifier of node.specifiers) {
                 if (isImportDefaultSpecifier(specifier) && isIdentifier(specifier.local)) {
                   pathModuleVars.add(specifier.local.name);
+                } else if (
+                  isImportSpecifier(specifier) &&
+                  isIdentifier(specifier.imported) &&
+                  isIdentifier(specifier.local)
+                ) {
+                  if (specifier.imported.name === "dirname")
+                    pathDirnameVars.add(specifier.local.name);
+                  if (specifier.imported.name === "join") pathJoinVars.add(specifier.local.name);
+                  if (specifier.imported.name === "resolve")
+                    pathResolveVars.add(specifier.local.name);
                 }
               }
             }
@@ -1079,10 +1239,36 @@ export default nativeModule;
             }
           }
 
+          // swift-node 0.1.0 generates a resolver function which picks the
+          // target-qualified addon path before passing it to require(). Track
+          // only functions whose bodies match that generated loader pattern.
+          if (node.type === "FunctionDeclaration") {
+            const functionNode = node as BaseASTNode & { id?: BaseASTNode };
+            const functionName = functionNode.id;
+            const functionCode =
+              node.start !== undefined && node.end !== undefined
+                ? code.slice(node.start, node.end)
+                : "";
+            if (
+              functionName &&
+              isIdentifier(functionName) &&
+              functionCode.includes("process.platform") &&
+              functionCode.includes("path.join") &&
+              functionCode.includes("existsSync") &&
+              functionCode.includes(".node")
+            ) {
+              swiftNodeAddonResolvers.add(functionName.name);
+            }
+          }
+
           // Track variable declarations
           if (isVariableDeclarator(node)) {
             if (isIdentifier(node.id) && node.init) {
               const varName = node.id.name;
+              const staticString = resolveStaticString(node.init);
+              if (staticString !== null) {
+                staticStringVars.set(varName, staticString);
+              }
 
               // Track directory variable assignments
               // Pattern 1: var t = __dirname
@@ -1098,6 +1284,9 @@ export default nativeModule;
                 const resolvedDir = resolveDirectoryFromCall(node.init, id);
                 if (resolvedDir) {
                   directoryVars.set(varName, resolvedDir);
+                  if (resolvedDir.endsWith(".node") && fs.existsSync(resolvedDir)) {
+                    nativeFilePathVars.set(varName, resolvedDir);
+                  }
                 }
 
                 // Also track createRequire and node-gyp-build assignments
@@ -1289,6 +1478,44 @@ export default nativeModule;
               }
             }
 
+            // Pattern 5b: Native paths assembled in variables. swift-node packages
+            // use `join(packageDirectory, \`addon.${target}.node\`)` and pass the
+            // resulting variable to a createRequire() function.
+            if (
+              isIdentifier(calleeNode) &&
+              (calleeNode.name === "require" || customRequireVars.has(calleeNode.name)) &&
+              node.arguments.length === 1 &&
+              isIdentifier(node.arguments[0])
+            ) {
+              const nodeFilePath = nativeFilePathVars.get(node.arguments[0].name);
+              if (nodeFilePath) {
+                processNodeFile(nodeFilePath, node);
+              }
+            }
+
+            // Pattern 5c: swift-node 0.1.0 resolves its addon through a local
+            // function before passing it to require(resolveAddonPath(...)).
+            if (
+              isIdentifier(calleeNode) &&
+              (calleeNode.name === "require" || customRequireVars.has(calleeNode.name)) &&
+              node.arguments.length === 1 &&
+              isCallExpression(node.arguments[0]) &&
+              isIdentifier(node.arguments[0].callee) &&
+              swiftNodeAddonResolvers.has(node.arguments[0].callee.name)
+            ) {
+              const resolverCall = node.arguments[0];
+              const directory = resolveDirArgument(resolverCall.arguments[0], id);
+              const moduleName = resolverCall.arguments[1]
+                ? resolveStaticString(resolverCall.arguments[1])
+                : null;
+              if (directory && moduleName) {
+                const resolvedAddon = resolveSwiftNodeAddon(directory, moduleName);
+                if (resolvedAddon) {
+                  processNodeFile(resolvedAddon.nodeFilePath, node, resolvedAddon.sidecarPaths);
+                }
+              }
+            }
+
             // Pattern 6 & 6b: NAPI-RS style path.join/__dirname patterns
             // Pattern 6: path.join(__dirname, 'xxx.node') or pathAlias.join(__dirname, 'xxx.node')
             // Pattern 6b: join(__dirname, 'xxx.node') (destructured)
@@ -1299,7 +1526,8 @@ export default nativeModule;
                 (pathModuleVars.has(calleeNode.object.name) || calleeNode.object.name === "path") &&
                 isIdentifier(calleeNode.property) &&
                 (calleeNode.property.name === "join" || calleeNode.property.name === "resolve")) ||
-              (isIdentifier(calleeNode) && calleeNode.name === "join");
+              (isIdentifier(calleeNode) &&
+                (calleeNode.name === "join" || pathJoinVars.has(calleeNode.name)));
 
             if (isPathJoinCall && node.arguments.length >= 2) {
               // Resolve base directory from first argument
@@ -1540,8 +1768,12 @@ export default nativeModule;
         }
 
         // Helper to process a found .node file and replace the call expression
-        function processNodeFile(nodeFilePath: string, callNode: CallExpressionNode): void {
-          const info = registerNativeFile(nodeFilePath);
+        function processNodeFile(
+          nodeFilePath: string,
+          callNode: CallExpressionNode,
+          sidecarPaths: string[] = [],
+        ): void {
+          const info = registerNativeFile(nodeFilePath, sidecarPaths);
 
           // Determine how to generate the replacement code
           let replacementCode: string;
