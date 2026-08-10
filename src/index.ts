@@ -78,6 +78,18 @@ interface VariableDeclaratorNode extends BaseASTNode {
   init?: BaseASTNode;
 }
 
+interface UnaryExpressionNode extends BaseASTNode {
+  type: "UnaryExpression";
+  operator: string;
+  argument: BaseASTNode;
+}
+
+interface IfStatementNode extends BaseASTNode {
+  type: "IfStatement";
+  test: BaseASTNode;
+  consequent: BaseASTNode;
+}
+
 interface ImportDeclarationNode extends BaseASTNode {
   type: "ImportDeclaration";
   specifiers: BaseASTNode[];
@@ -120,6 +132,14 @@ function isMemberExpression(node: BaseASTNode): node is MemberExpressionNode {
 
 function isVariableDeclarator(node: BaseASTNode): node is VariableDeclaratorNode {
   return node.type === "VariableDeclarator";
+}
+
+function isUnaryExpression(node: BaseASTNode): node is UnaryExpressionNode {
+  return node.type === "UnaryExpression";
+}
+
+function isIfStatement(node: BaseASTNode): node is IfStatementNode {
+  return node.type === "IfStatement";
 }
 
 function isImportDeclaration(node: BaseASTNode): node is ImportDeclarationNode {
@@ -932,6 +952,8 @@ export default nativeModule;
         // Swift-node loaders use these to construct target-qualified addon filenames.
         const staticStringVars = new Map<string, string>();
         const nativeFilePathVars = new Map<string, string>();
+        const nativePathPreflightGuards = new Map<string, IfStatementNode>();
+        const removedNativePathPreflightGuards = new Set<IfStatementNode>();
         const swiftNodeAddonResolvers = new Set<string>();
 
         // Track module aliases for path and url modules
@@ -1048,6 +1070,43 @@ export default nativeModule;
           }
 
           return null;
+        }
+
+        function nativePathPreflightGuardVariable(node: BaseASTNode): string | null {
+          if (!isIfStatement(node) || node.consequent.type !== "ThrowStatement") return null;
+          if (!isUnaryExpression(node.test) || node.test.operator !== "!") return null;
+          if (!isCallExpression(node.test.argument) || node.test.argument.arguments.length !== 1)
+            return null;
+
+          const [argument] = node.test.argument.arguments;
+          if (!isIdentifier(argument)) return null;
+
+          const callee = node.test.argument.callee;
+          if (isIdentifier(callee) && callee.name === "existsSync") return argument.name;
+          if (
+            isMemberExpression(callee) &&
+            isIdentifier(callee.property) &&
+            callee.property.name === "existsSync"
+          ) {
+            return argument.name;
+          }
+
+          return null;
+        }
+
+        function removeNativePathPreflightGuard(variableName: string): void {
+          const guard = nativePathPreflightGuards.get(variableName);
+          if (
+            !guard ||
+            removedNativePathPreflightGuards.has(guard) ||
+            guard.start === undefined ||
+            guard.end === undefined
+          )
+            return;
+
+          replacements.push({ start: guard.start, end: guard.end, value: "" });
+          removedNativePathPreflightGuards.add(guard);
+          modified = true;
         }
 
         // Helper to resolve directory from a CallExpression (path.dirname, path.resolve, etc.)
@@ -1257,6 +1316,11 @@ export default nativeModule;
             ) {
               swiftNodeAddonResolvers.add(functionName.name);
             }
+          }
+
+          const guardedVariable = nativePathPreflightGuardVariable(node);
+          if (guardedVariable) {
+            nativePathPreflightGuards.set(guardedVariable, node as IfStatementNode);
           }
 
           // Track variable declarations
@@ -1488,6 +1552,7 @@ export default nativeModule;
               const nodeFilePath = nativeFilePathVars.get(node.arguments[0].name);
               if (nodeFilePath) {
                 processNodeFile(nodeFilePath, node);
+                removeNativePathPreflightGuard(node.arguments[0].name);
               }
             }
 
