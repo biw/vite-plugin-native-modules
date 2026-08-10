@@ -816,8 +816,6 @@ export default nativeModule;
 
     name,
 
-    enforce: "pre",
-
     async resolveId(source, importer) {
       // Check if enabled
       const enabled = options.forced ?? command === "build";
@@ -1932,6 +1930,17 @@ export default nativeModule;
       return null;
     },
   };
+
+  const resolveId = plugin.resolveId;
+  if (typeof resolveId === "function") {
+    plugin.resolveId = {
+      call(context: unknown, ...args: unknown[]) {
+        return Reflect.apply(resolveId, context, args);
+      },
+      handler: resolveId,
+      order: "pre",
+    } as Plugin["resolveId"];
+  }
 
   const generateBundle = plugin.generateBundle;
   if (typeof generateBundle === "function") {
