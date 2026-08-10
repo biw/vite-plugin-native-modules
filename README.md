@@ -13,6 +13,7 @@ A Vite plugin for seamlessly integrating Node.js native modules (`.node` files) 
 - **Electron compatible** for building desktop apps with native modules
 - **`node-gyp-build` support** - automatically detects and rewrites runtime selectors
 - **`bindings` package support** - automatically handles `bindings('addon')` patterns
+- **[`swift-node`](https://github.com/biw/swift-node) support** - automatically handles target-qualified addons
 - **Zero dependencies** - uses Rollup's built-in parser (via Vite)
 
 ## Installation

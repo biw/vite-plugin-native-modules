@@ -851,8 +851,16 @@ export default nativeModule;
         // Track variables that hold directory paths
         const directoryVars = new Map<string, string>(); // varName -> resolved directory path
 
+        // Track variables that hold statically evaluable strings and native file paths.
+        // Swift-node loaders use these to construct target-qualified addon filenames.
+        const staticStringVars = new Map<string, string>();
+        const nativeFilePathVars = new Map<string, string>();
+
         // Track module aliases for path and url modules
         const pathModuleVars = new Set<string>(); // Variables that reference 'path' module
+        const pathDirnameVars = new Set<string>(); // Named dirname imports from 'path'
+        const pathJoinVars = new Set<string>(); // Named join imports from 'path'
+        const pathResolveVars = new Set<string>(); // Named resolve imports from 'path'
         const fileURLToPathVars = new Set<string>(); // Variables that reference 'fileURLToPath'
 
         // Detect if this is an ES6 module (vs CommonJS)
@@ -909,6 +917,61 @@ export default nativeModule;
           return false;
         }
 
+        function resolveStaticString(node: BaseASTNode): string | null {
+          if (isLiteral(node) && typeof node.value === "string") {
+            return node.value;
+          }
+
+          if (isIdentifier(node)) {
+            return staticStringVars.get(node.name) ?? null;
+          }
+
+          if (isMemberExpression(node)) {
+            if (
+              isIdentifier(node.object) &&
+              node.object.name === "process" &&
+              isIdentifier(node.property)
+            ) {
+              if (node.property.name === "platform") return process.platform;
+              if (node.property.name === "arch") return process.arch;
+            }
+            return null;
+          }
+
+          if (node.type === "TemplateLiteral") {
+            const template = node as BaseASTNode & {
+              expressions: BaseASTNode[];
+              quasis: Array<{ value: { cooked: string | null } }>;
+            };
+            let value = template.quasis[0]?.value.cooked;
+            if (value === null || value === undefined) return null;
+
+            for (let index = 0; index < template.expressions.length; index++) {
+              const expressionValue = resolveStaticString(template.expressions[index]);
+              const suffix = template.quasis[index + 1]?.value.cooked;
+              if (expressionValue === null || suffix === null || suffix === undefined) return null;
+              value += expressionValue + suffix;
+            }
+
+            return value;
+          }
+
+          if (node.type === "BinaryExpression") {
+            const expression = node as BaseASTNode & {
+              left: BaseASTNode;
+              operator: string;
+              right: BaseASTNode;
+            };
+            if (expression.operator !== "+") return null;
+
+            const left = resolveStaticString(expression.left);
+            const right = resolveStaticString(expression.right);
+            return left === null || right === null ? null : left + right;
+          }
+
+          return null;
+        }
+
         // Helper to resolve directory from a CallExpression (path.dirname, path.resolve, etc.)
         function resolveDirectoryFromCall(
           callNode: CallExpressionNode,
@@ -916,80 +979,87 @@ export default nativeModule;
         ): string | null {
           const callee = callNode.callee;
 
-          // Check for path.dirname() or pathAlias.dirname()
-          if (isMemberExpression(callee)) {
-            const memberExpr = callee as MemberExpressionNode;
-            if (
-              isIdentifier(memberExpr.object) &&
-              (pathModuleVars.has(memberExpr.object.name) || memberExpr.object.name === "path") &&
-              isIdentifier(memberExpr.property)
-            ) {
-              const methodName = memberExpr.property.name;
+          // Check for path.dirname(), pathAlias.dirname(), or named path imports.
+          let methodName: "dirname" | "join" | "resolve" | null = null;
+          if (
+            isMemberExpression(callee) &&
+            isIdentifier(callee.object) &&
+            (pathModuleVars.has(callee.object.name) || callee.object.name === "path") &&
+            isIdentifier(callee.property) &&
+            (callee.property.name === "dirname" ||
+              callee.property.name === "join" ||
+              callee.property.name === "resolve")
+          ) {
+            methodName = callee.property.name;
+          } else if (isIdentifier(callee)) {
+            if (pathDirnameVars.has(callee.name)) methodName = "dirname";
+            else if (pathJoinVars.has(callee.name) || callee.name === "join") methodName = "join";
+            else if (pathResolveVars.has(callee.name)) methodName = "resolve";
+          }
 
-              // path.dirname(fileURLToPath(import.meta.url))
-              if (methodName === "dirname") {
-                if (callNode.arguments.length === 1) {
-                  const arg = callNode.arguments[0];
-                  if (isFileURLToPathPattern(arg)) {
-                    // This is equivalent to __dirname
-                    return path.dirname(currentFileId);
-                  }
-                  // path.dirname(someVar) where someVar is a known directory
-                  if (isIdentifier(arg) && directoryVars.has(arg.name)) {
-                    const baseDir = directoryVars.get(arg.name)!;
-                    return path.dirname(baseDir);
-                  }
-                }
+          // path.dirname(fileURLToPath(import.meta.url))
+          if (methodName === "dirname") {
+            if (callNode.arguments.length === 1) {
+              const arg = callNode.arguments[0];
+              if (isFileURLToPathPattern(arg)) {
+                // This is equivalent to __dirname
+                return path.dirname(currentFileId);
               }
-
-              // path.resolve() or path.join()
-              if (methodName === "resolve" || methodName === "join") {
-                if (callNode.arguments.length === 0) return null;
-
-                // Determine the base directory from the first argument
-                let baseDir: string | null = null;
-                let startIndex = 0;
-
-                const firstArg = callNode.arguments[0];
-                if (isIdentifier(firstArg)) {
-                  if (firstArg.name === "__dirname") {
-                    baseDir = path.dirname(currentFileId);
-                    startIndex = 1;
-                  } else if (directoryVars.has(firstArg.name)) {
-                    baseDir = directoryVars.get(firstArg.name)!;
-                    startIndex = 1;
-                  } else {
-                    // Unknown variable
-                    return null;
-                  }
-                } else if (isLiteral(firstArg) && typeof firstArg.value === "string") {
-                  // Absolute or relative path
-                  baseDir = path.dirname(currentFileId);
-                  startIndex = 0;
-                } else {
-                  // Complex expression
-                  return null;
-                }
-
-                const parts: string[] = [baseDir];
-
-                // Process remaining arguments
-                for (let i = startIndex; i < callNode.arguments.length; i++) {
-                  const arg = callNode.arguments[i];
-                  if (isLiteral(arg) && typeof arg.value === "string") {
-                    parts.push(arg.value);
-                  } else if (isIdentifier(arg) && directoryVars.has(arg.name)) {
-                    // Another directory variable - use it
-                    parts.push(directoryVars.get(arg.name)!);
-                  } else {
-                    // Can't resolve
-                    return null;
-                  }
-                }
-
-                return path.join(...parts);
+              // path.dirname(someVar) where someVar is a known directory
+              if (isIdentifier(arg) && directoryVars.has(arg.name)) {
+                const baseDir = directoryVars.get(arg.name)!;
+                return path.dirname(baseDir);
               }
             }
+          }
+
+          // path.resolve() or path.join()
+          if (methodName === "resolve" || methodName === "join") {
+            if (callNode.arguments.length === 0) return null;
+
+            // Determine the base directory from the first argument
+            let baseDir: string | null = null;
+            let startIndex = 0;
+
+            const firstArg = callNode.arguments[0];
+            if (isIdentifier(firstArg)) {
+              if (firstArg.name === "__dirname") {
+                baseDir = path.dirname(currentFileId);
+                startIndex = 1;
+              } else if (directoryVars.has(firstArg.name)) {
+                baseDir = directoryVars.get(firstArg.name)!;
+                startIndex = 1;
+              } else {
+                // Unknown variable
+                return null;
+              }
+            } else if (resolveStaticString(firstArg) !== null) {
+              // Absolute or relative path
+              baseDir = path.dirname(currentFileId);
+              startIndex = 0;
+            } else {
+              // Complex expression
+              return null;
+            }
+
+            const parts: string[] = [baseDir];
+
+            // Process remaining arguments
+            for (let i = startIndex; i < callNode.arguments.length; i++) {
+              const arg = callNode.arguments[i];
+              const staticValue = resolveStaticString(arg);
+              if (staticValue !== null) {
+                parts.push(staticValue);
+              } else if (isIdentifier(arg) && directoryVars.has(arg.name)) {
+                // Another directory variable - use it
+                parts.push(directoryVars.get(arg.name)!);
+              } else {
+                // Can't resolve
+                return null;
+              }
+            }
+
+            return path.join(...parts);
           }
 
           return null;
@@ -1037,6 +1107,16 @@ export default nativeModule;
               for (const specifier of node.specifiers) {
                 if (isImportDefaultSpecifier(specifier) && isIdentifier(specifier.local)) {
                   pathModuleVars.add(specifier.local.name);
+                } else if (
+                  isImportSpecifier(specifier) &&
+                  isIdentifier(specifier.imported) &&
+                  isIdentifier(specifier.local)
+                ) {
+                  if (specifier.imported.name === "dirname")
+                    pathDirnameVars.add(specifier.local.name);
+                  if (specifier.imported.name === "join") pathJoinVars.add(specifier.local.name);
+                  if (specifier.imported.name === "resolve")
+                    pathResolveVars.add(specifier.local.name);
                 }
               }
             }
@@ -1083,6 +1163,10 @@ export default nativeModule;
           if (isVariableDeclarator(node)) {
             if (isIdentifier(node.id) && node.init) {
               const varName = node.id.name;
+              const staticString = resolveStaticString(node.init);
+              if (staticString !== null) {
+                staticStringVars.set(varName, staticString);
+              }
 
               // Track directory variable assignments
               // Pattern 1: var t = __dirname
@@ -1098,6 +1182,9 @@ export default nativeModule;
                 const resolvedDir = resolveDirectoryFromCall(node.init, id);
                 if (resolvedDir) {
                   directoryVars.set(varName, resolvedDir);
+                  if (resolvedDir.endsWith(".node") && fs.existsSync(resolvedDir)) {
+                    nativeFilePathVars.set(varName, resolvedDir);
+                  }
                 }
 
                 // Also track createRequire and node-gyp-build assignments
@@ -1289,6 +1376,21 @@ export default nativeModule;
               }
             }
 
+            // Pattern 5b: Native paths assembled in variables. swift-node packages
+            // use `join(packageDirectory, \`addon.${target}.node\`)` and pass the
+            // resulting variable to a createRequire() function.
+            if (
+              isIdentifier(calleeNode) &&
+              (calleeNode.name === "require" || customRequireVars.has(calleeNode.name)) &&
+              node.arguments.length === 1 &&
+              isIdentifier(node.arguments[0])
+            ) {
+              const nodeFilePath = nativeFilePathVars.get(node.arguments[0].name);
+              if (nodeFilePath) {
+                processNodeFile(nodeFilePath, node);
+              }
+            }
+
             // Pattern 6 & 6b: NAPI-RS style path.join/__dirname patterns
             // Pattern 6: path.join(__dirname, 'xxx.node') or pathAlias.join(__dirname, 'xxx.node')
             // Pattern 6b: join(__dirname, 'xxx.node') (destructured)
@@ -1299,7 +1401,8 @@ export default nativeModule;
                 (pathModuleVars.has(calleeNode.object.name) || calleeNode.object.name === "path") &&
                 isIdentifier(calleeNode.property) &&
                 (calleeNode.property.name === "join" || calleeNode.property.name === "resolve")) ||
-              (isIdentifier(calleeNode) && calleeNode.name === "join");
+              (isIdentifier(calleeNode) &&
+                (calleeNode.name === "join" || pathJoinVars.has(calleeNode.name)));
 
             if (isPathJoinCall && node.arguments.length >= 2) {
               // Resolve base directory from first argument
