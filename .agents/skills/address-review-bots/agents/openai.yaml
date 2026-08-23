@@ -1,6 +1,0 @@
-interface:
-  display_name: "Address Review Bots"
-  short_description: "Loop on Claude and Devin PR feedback"
-  default_prompt: "Use $address-review-bots after pushing my PR to handle valid review-bot comments."
-policy:
-  allow_implicit_invocation: true

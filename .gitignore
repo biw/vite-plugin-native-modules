@@ -16,6 +16,8 @@ dist
 # IDE
 .vscode/
 .idea
+.agents/skills/
+.claude/skills/
 *.swp
 *.swo
 *~
