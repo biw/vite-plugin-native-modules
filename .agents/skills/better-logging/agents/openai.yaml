@@ -1,6 +1,0 @@
-interface:
-  display_name: "Better Logging"
-  short_description: "Design durable operation outcome events"
-  default_prompt: "Use $better-logging to make important app operations queryable."
-policy:
-  allow_implicit_invocation: true
