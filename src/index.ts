@@ -1529,13 +1529,22 @@ export default nativeModule;
                 const absolutePath = path.resolve(path.dirname(id), relativePath);
 
                 if (fs.existsSync(absolutePath)) {
-                  const info = registerNativeFile(absolutePath);
-                  replacements.push({
-                    start: literalNode.start,
-                    end: literalNode.end,
-                    value: `"./${info.hashedFilename}"`,
-                  });
-                  modified = true;
+                  if (
+                    isIdentifier(calleeNode) &&
+                    (calleeNode.name === "require" || customRequireVars.has(calleeNode.name))
+                  ) {
+                    // Replace the whole require() so CommonJS importers get the
+                    // native exports rather than the virtual module's namespace.
+                    processNodeFile(absolutePath, node);
+                  } else {
+                    const info = registerNativeFile(absolutePath);
+                    replacements.push({
+                      start: literalNode.start,
+                      end: literalNode.end,
+                      value: `"./${info.hashedFilename}"`,
+                    });
+                    modified = true;
+                  }
                 }
               }
             }
@@ -1657,14 +1666,7 @@ export default nativeModule;
                 const nodeFilePath = resolveNpmPackageNodeFile(packageName, path.dirname(id));
 
                 if (nodeFilePath) {
-                  const info = registerNativeFile(nodeFilePath);
-                  const literalNode = node.arguments[0] as LiteralNode;
-                  replacements.push({
-                    start: literalNode.start,
-                    end: literalNode.end,
-                    value: `"./${info.hashedFilename}"`,
-                  });
-                  modified = true;
+                  processNodeFile(nodeFilePath, node);
                 }
               }
             }
@@ -1695,17 +1697,7 @@ export default nativeModule;
                   const result = findPlatformSpecificNativePackage(prefix, path.dirname(id));
 
                   if (result) {
-                    const { nodeFilePath } = result;
-                    const info = registerNativeFile(nodeFilePath);
-                    const templateNode = node.arguments[0];
-                    if (templateNode.start !== undefined && templateNode.end !== undefined) {
-                      replacements.push({
-                        start: templateNode.start,
-                        end: templateNode.end,
-                        value: `"./${info.hashedFilename}"`,
-                      });
-                      modified = true;
-                    }
+                    processNodeFile(result.nodeFilePath, node);
                   }
                 }
               }

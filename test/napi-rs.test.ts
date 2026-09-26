@@ -179,7 +179,7 @@ describe("NAPI-RS Support", () => {
       const joinFilename = joinMatch![1];
 
       // Extract hashed filename from require call
-      const requireMatch = result.code.match(/require\(['"]\.\/([^'"]+)['"]\)/);
+      const requireMatch = result.code.match(/require\(['"]\.\/([^'"?]+)/);
       expect(requireMatch).toBeDefined();
       const requireFilename = requireMatch![1];
 
@@ -747,7 +747,7 @@ describe("NAPI-RS Support", () => {
       expect(transformResult).toBeDefined();
 
       // Extract hashed filename from transformed code
-      const match = transformResult.code.match(/require\("\.\/([^"]+\.node)"\)/);
+      const match = transformResult.code.match(/require\("\.\/([^"?]+\.node)/);
       expect(match).toBeDefined();
       const hashedFilename = match![1];
 
@@ -883,7 +883,7 @@ describe("NAPI-RS Support", () => {
       expect(transformResult.code).not.toContain("`@libsql/");
 
       // Extract the hashed filename and verify resolveId returns virtual module ID
-      const match = transformResult.code.match(/require\("\.\/([^"]+\.node)"\)/);
+      const match = transformResult.code.match(/require\("\.\/([^"?]+\.node)/);
       expect(match).toBeDefined();
 
       const resolveResult = await (plugin.resolveId as any).call(

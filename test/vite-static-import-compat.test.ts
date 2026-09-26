@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { build as buildVite7 } from "vite7";
 import vite7Package from "vite7/package.json";
@@ -133,5 +134,76 @@ describe.each(viteVersions)(
 
       expectNativeAddonOutput(result);
     });
+
+    it.each([
+      { name: "relative path", source: "./build/Release/addon.node", comment: "" },
+      // NAPI-RS loaders mention their .node filename, which the transform filter requires.
+      { name: "package", source: "native-pkg", comment: "// Loads native-pkg/addon.node" },
+    ])(
+      "returns the native exports from a CommonJS $name require in ESM output",
+      async ({ comment, source }) => {
+        const entryPath = path.join(tempDir, "index.mjs");
+        const releaseDir = path.join(tempDir, "build", "Release");
+        fs.mkdirSync(releaseDir, { recursive: true });
+        fs.writeFileSync(path.join(releaseDir, "addon.node"), Buffer.from("fake native module"));
+        const packageDir = path.join(tempDir, "node_modules", "native-pkg");
+        fs.mkdirSync(packageDir, { recursive: true });
+        fs.writeFileSync(path.join(packageDir, "addon.node"), Buffer.from("fake package module"));
+        fs.writeFileSync(
+          path.join(packageDir, "package.json"),
+          JSON.stringify({ main: "addon.node", name: "native-pkg" }),
+        );
+        fs.writeFileSync(
+          path.join(tempDir, "lib.cjs"),
+          `
+          ${comment}
+          const addon = require("${source}");
+          class Wrapped extends addon.Base {}
+          module.exports = { hasDefault: "default" in addon, wrapped: new Wrapped().marker };
+        `,
+        );
+        fs.writeFileSync(entryPath, "import lib from './lib.cjs'; export default lib;\n");
+
+        // Replace createRequire so the bundle can run without a real native binary.
+        const fakeNodeModule = {
+          enforce: "pre" as const,
+          load(id: string) {
+            if (id === "\0fake-node-module") {
+              return `class Base { marker = "native"; }
+export function createRequire() {
+  return () => ({ Base });
+}`;
+            }
+          },
+          name: "fake-node-module",
+          resolveId(id: string) {
+            if (id === "node:module" || id === "module") return "\0fake-node-module";
+          },
+        };
+
+        const outDir = path.join(tempDir, "dist");
+        await build({
+          build: {
+            outDir,
+            rollupOptions: {
+              input: entryPath,
+              output: { entryFileNames: "index.mjs", format: "es" },
+            },
+            ssr: true,
+          },
+          configFile: false,
+          logLevel: "silent",
+          plugins: [fakeNodeModule, nativeFilePlugin()],
+          root: tempDir,
+          ssr: { noExternal: true },
+        });
+
+        const bundledModule = await import(
+          /* @vite-ignore */ pathToFileURL(path.join(outDir, "index.mjs")).href
+        );
+
+        expect(bundledModule.default).toEqual({ hasDefault: false, wrapped: "native" });
+      },
+    );
   },
 );
